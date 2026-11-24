@@ -22,7 +22,7 @@ class HistRegistry {
   HistRegistry(const HistRegistry&) = delete;
   HistRegistry& operator=(const HistRegistry&) = delete;
 
-  // `folder` is a slash-separated path such as "DAQ" or "Channels/192.168.10.16".
+  // `folder` is a slash-separated path such as "DAQ" or "Channels/192.0.2.16".
   TH1D* Book1D(const std::string& folder, const std::string& name, const std::string& title, int nx, double xlo,
                double xhi);
   TH2D* Book2D(const std::string& folder, const std::string& name, const std::string& title, int nx, double xlo,

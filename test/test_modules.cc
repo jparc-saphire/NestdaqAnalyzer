@@ -14,8 +14,8 @@ using namespace nda;
 
 namespace {
 
-constexpr std::uint32_t kFemA = 0xc0a80a10;  // 192.168.10.16
-constexpr std::uint32_t kFemB = 0xc0a80a0a;  // 192.168.10.10
+constexpr std::uint32_t kFemA = 0xc0000210;  // 192.0.2.16
+constexpr std::uint32_t kFemB = 0xc000020a;  // 192.0.2.10
 
 ndatest::Stf Frame(std::uint32_t fem, std::uint32_t frame, std::vector<std::uint64_t> data, std::uint16_t flags = 0) {
   ndatest::Stf s;
@@ -57,14 +57,14 @@ struct Setup {
 };
 
 void TestFemLabels() {
-  CHECK_EQ(modules::FemLabel(kFemA), std::string("192.168.10.16"));
+  CHECK_EQ(modules::FemLabel(kFemA), std::string("192.0.2.16"));
   std::uint32_t id = 0;
-  CHECK(modules::ParseFemId("192.168.10.10", id));
+  CHECK(modules::ParseFemId("192.0.2.10", id));
   CHECK_EQ(id, kFemB);
-  CHECK(modules::ParseFemId("0xc0a80a10", id));
+  CHECK(modules::ParseFemId("0xc0000210", id));
   CHECK_EQ(id, kFemA);
-  CHECK(!modules::ParseFemId("192.168.10", id));
-  CHECK(!modules::ParseFemId("192.168.10.300", id));
+  CHECK(!modules::ParseFemId("192.0.2", id));
+  CHECK(!modules::ParseFemId("192.0.2.300", id));
 }
 
 void TestCountsAndContinuity() {
@@ -92,7 +92,7 @@ void TestCountsAndContinuity() {
   CHECK_EQ(s.daq->Counters(a).words[modules::DaqHealthModule::kKindLeading], std::uint64_t{3});
   CHECK_EQ(s.daq->Counters(a).words[modules::DaqHealthModule::kKindTrailing], std::uint64_t{3});
   CHECK_EQ(s.daq->Counters(a).words[modules::DaqHealthModule::kKindHeartbeat2], std::uint64_t{3});
-  CHECK(s.HasWarning("192.168.10.16: 2 missing heartbeat frames"));
+  CHECK(s.HasWarning("192.0.2.16: 2 missing heartbeat frames"));
   CHECK(s.HasWarning("disagree on the frame id"));
 
   CHECK_EQ(s.channels->NumFems(), 2);
@@ -108,7 +108,7 @@ void TestFlagsAndExpected() {
   Setup s(1, {kFemA, kFemB});
   s.Feed(ndatest::BuildTimeFrame(1, {Frame(kFemA, 1, {}, 0x0200)}, 2, ::TimeFrame::TF_INCOMPLETE));
   s.engine.Update();
-  CHECK(s.HasWarning("expected module 192.168.10.10 sends no data"));
+  CHECK(s.HasWarning("expected module 192.0.2.10 sends no data"));
   CHECK(s.HasWarning("delimiters with flags (bits seen 0x200)"));
   CHECK(s.HasWarning("1 incomplete time frames"));
   CHECK(s.HasWarning("fewer sub time frames than numSource"));

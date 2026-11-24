@@ -22,8 +22,8 @@ using namespace nda;
 
 namespace {
 
-constexpr std::uint32_t kFem = 0xc0a80a10;       // 192.168.10.16: detectors
-constexpr std::uint32_t kReceiver = 0xc0a80a0a;  // 192.168.10.10: B2TT records
+constexpr std::uint32_t kFem = 0xc0000210;       // 192.0.2.16: detectors
+constexpr std::uint32_t kReceiver = 0xc000020a;  // 192.0.2.10: B2TT records
 constexpr double kLsb = 1.0 / 1024;              // ns
 
 std::string gDir;
@@ -46,14 +46,14 @@ const char* kChannels =
     "#! format channel_map v1\n"
     "#! valid_runs 0 100\n"
     "#! description \"test # map\"\n"
-    "192.168.10.16  0 SC   0 0 0 0 SC-0-U\n"
-    "192.168.10.16  1 SC   0 0 0 1 SC-0-D\n"
-    "192.168.10.16  2 SC   0 0 1 0 SC-1-U\n"
-    "192.168.10.16  3 SC   0 0 1 1 SC-1-D\n"
-    "192.168.10.16  4 MRPC 0 0 0 0 MRPC-0-0\n"
-    "192.168.10.16  5 MRPC 0 0 0 1 MRPC-0-1\n"
-    "192.168.10.16  6 TRIG 0 0 0 0 T1\n"
-    "192.168.10.16  8 AC   0 0 4 0 AC-4   # only one AC segment is mapped\n";
+    "192.0.2.16  0 SC   0 0 0 0 SC-0-U\n"
+    "192.0.2.16  1 SC   0 0 0 1 SC-0-D\n"
+    "192.0.2.16  2 SC   0 0 1 0 SC-1-U\n"
+    "192.0.2.16  3 SC   0 0 1 1 SC-1-D\n"
+    "192.0.2.16  4 MRPC 0 0 0 0 MRPC-0-0\n"
+    "192.0.2.16  5 MRPC 0 0 0 1 MRPC-0-1\n"
+    "192.0.2.16  6 TRIG 0 0 0 0 T1\n"
+    "192.0.2.16  8 AC   0 0 4 0 AC-4   # only one AC segment is mapped\n";
 
 const char* kSettings =
     "#! format settings v1\n"
@@ -108,13 +108,13 @@ void TestParams() {
   CHECK_EQ(map.warnings.size(), std::size_t{1});  // AC: 8 segments missing
   CHECK(map.warnings.size() == 1 && map.warnings[0].find("AC: 8") != std::string::npos);
 
-  std::string bad = std::string(kChannels) + "192.168.10.16  1 SC 0 0 1 1 SC-X\n";
+  std::string bad = std::string(kChannels) + "192.0.2.16  1 SC 0 0 1 1 SC-X\n";
   CHECK(!e88::ReadChannelMap(WriteFile("bad1.txt", bad), def, map, error));
   CHECK(error.find("appears twice") != std::string::npos);
-  bad = std::string(kChannels) + "192.168.10.16  9 SC 0 0 2 0 SC-2-U\n";
+  bad = std::string(kChannels) + "192.0.2.16  9 SC 0 0 2 0 SC-2-U\n";
   CHECK(!e88::ReadChannelMap(WriteFile("bad2.txt", bad), def, map, error));
   CHECK(error.find("out of range") != std::string::npos);
-  bad = std::string(kChannels) + "192.168.10.16  9 HODO 0 0 0 0 H0\n";
+  bad = std::string(kChannels) + "192.0.2.16  9 HODO 0 0 0 0 H0\n";
   CHECK(!e88::ReadChannelMap(WriteFile("bad3.txt", bad), def, map, error));
 
   e88::Settings settings;
@@ -261,7 +261,7 @@ void TestModule() {
 
   bool unmappedWarning = false, repeatWarning = false;
   for (const auto& w : engine.Warnings()) {
-    unmappedWarning |= w.text.find("1 hits on channels not in the channel map: 192.168.10.16/60(1)") != std::string::npos;
+    unmappedWarning |= w.text.find("1 hits on channels not in the channel map: 192.0.2.16/60(1)") != std::string::npos;
     repeatWarning |= w.text.find("repeated 1 times") != std::string::npos;
   }
   CHECK(unmappedWarning);

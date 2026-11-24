@@ -8,9 +8,9 @@
 
 namespace nda::modules {
 
-// The FEM id is built from the SiTCP IP address of the board: 192.168.10.16 -> 0xc0a80a10.
+// The FEM id is built from the SiTCP IP address of the board: 192.0.2.16 -> 0xc0000210.
 std::string FemLabel(std::uint32_t femId);
-// Parses "192.168.10.16" or "0xc0a80a10". Returns false on a malformed string.
+// Parses "192.0.2.16" or "0xc0000210". Returns false on a malformed string.
 bool ParseFemId(const std::string& text, std::uint32_t& femId);
 
 class FemTable {

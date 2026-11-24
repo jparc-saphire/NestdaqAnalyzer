@@ -60,13 +60,13 @@ ndatest::Stf MakeStf(std::uint32_t fem, std::uint32_t frame, int nHits) {
 }
 
 void TestParse() {
-  const auto tf = ndatest::BuildTimeFrame(7, {MakeStf(0xc0a80a10, 7, 3), MakeStf(0xc0a80a0a, 7, 0)});
+  const auto tf = ndatest::BuildTimeFrame(7, {MakeStf(0xc0000210, 7, 3), MakeStf(0xc000020a, 7, 0)});
   TimeFrameView view;
   std::string error;
   CHECK(ParseTimeFrame(reinterpret_cast<const std::uint8_t*>(tf.data()), ndatest::Bytes(tf), view, error));
   CHECK_EQ(view.subFrames.size(), std::size_t{2});
   CHECK_EQ(view.header->numSource, 2u);
-  CHECK_EQ(view.subFrames[0].header->femId, 0xc0a80a10u);
+  CHECK_EQ(view.subFrames[0].header->femId, 0xc0000210u);
   CHECK_EQ(view.subFrames[0].frames.size(), std::size_t{1});
   CHECK_EQ(view.subFrames[0].frames[0].nWords, std::size_t{5});
   CHECK_EQ(view.subFrames[1].frames[0].nWords, std::size_t{2});
@@ -97,7 +97,7 @@ void TestFileReader() {
     std::snprintf(h.comments, sizeof(h.comments), "test file");
     os.write(reinterpret_cast<const char*>(&h), sizeof(h));
     for (std::uint32_t f = 0; f < 3; ++f) {
-      const auto tf = ndatest::BuildTimeFrame(f, {MakeStf(0xc0a80a10, f, 2)});
+      const auto tf = ndatest::BuildTimeFrame(f, {MakeStf(0xc0000210, f, 2)});
       os.write(reinterpret_cast<const char*>(tf.data()), ndatest::Bytes(tf));
     }
     ::FileSinkTrailer::Trailer t{};
