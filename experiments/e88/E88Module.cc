@@ -418,6 +418,7 @@ void E88Module::Report(monitor::WarningList& out) const {
   using monitor::Check;
   using monitor::Severity;
   for (const auto& w : fConfig.channels.warnings) out.push_back({Check::kDetectors, Severity::kWarning, Name(), "channel map: " + w});
+  for (const auto& w : fConfig.settings.warnings) out.push_back({Check::kDetectors, Severity::kWarning, Name(), "settings: " + w});
   if (fTimeFrames >= 100) {
     for (auto fem : fConfig.channels.fems) {
       if (!fFemFrames.count(fem)) {

@@ -30,7 +30,8 @@ NestdaqAnalyzer/
 ├── core/
 │   ├── format/        time frame parsing, TDC word decoding, FileSink reader (no ROOT, no FairMQ)
 │   ├── monitor/       module interface, histogram registry, engine, warnings (ROOT)
-│   └── modules/       generic modules: DaqHealthModule, ChannelModule
+│   ├── modules/       generic modules: DaqHealthModule, ChannelModule
+│   └── util/          SHA-256 of input files (no ROOT, no FairMQ)
 ├── experiments/
 │   └── e88/           E88 monitor: parameter files, B2TT records, E88Module
 ├── apps/              nda-replay (reads files, no FairMQ)
@@ -56,6 +57,15 @@ git submodule update --init
 cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build        # unit tests
+```
+
+The test `e88_conformance` runs the conformance cases of the E88 parameter repository (its
+`conformance/cases.txt`) through the parameter reader, and loads the indexes `2026nov/index.txt` (unassigned
+rows allowed) and `dummy/index.txt` (must load without warnings). The parameter repository is not part of
+this repository: give its location with `E88PARAM_DIR`; without it the test is reported as skipped.
+
+```bash
+E88PARAM_DIR=<parameter repository> ctest --test-dir build --output-on-failure
 ```
 
 Executables are written to `build/bin/`. CMake options:
@@ -91,23 +101,50 @@ type of its B2TT records itself).
 
 ```bash
 build/bin/nda-replay --input run000123.dat --param <param dir>/index.txt --http http:<port>
+# while the cabling is not fixed (channel-map rows with '-' in fem_ip and ch)
+build/bin/nda-replay --input run000123.dat --param <param dir>/index.txt --e88-allow-unassigned
 # or give the files one by one
 build/bin/nda-replay --input run000123.dat --detector-def detectors.txt --channel-map channel-map.txt --settings settings.txt
 ```
 
-File formats (whitespace separated text, `#` starts a comment, `#!` lines are directives):
+The parameter files are kept in a separate parameter repository, whose `FORMAT.md` (version 1) is the
+specification; the reader in `experiments/e88/Params.cc` follows it and is checked against the repository's
+conformance cases (see Build). Summary of the formats (whitespace separated text, `#` starts a comment,
+`#!` lines are directives, a double-quoted string is one field):
 
 | File | Header | Columns |
 |---|---|---|
 | detector definition | `#! format detector_def v1` | `detector module layer n_segment n_side edges [description]` |
-| channel map | `#! format channel_map v1`, `#! valid_runs <first> <last>` | `fem_ip ch detector module layer segment side name` |
+| channel map | `#! format channel_map v1`, `#! valid_runs <first> <last>` | exactly `fem_ip ch detector module layer segment side name` |
 | settings | `#! format settings v1` | `key value [value ...]` |
-| parameter index | `#! format param_index v1` | `kind first_run last_run required file` (kinds `detector_def`, `channel_map`, `settings`) |
+| parameter index | `#! format param_index v1`, `#! run_series <name>` | exactly `kind first_run last_run required file` |
+
+Rules that make a file fail to load:
+
+- detector definition: `detector` other than `SC`, `MRPC`, `AC`, `TRIG`; `module`, `layer` outside 0-255;
+  `n_side` other than 1 or 2; `edges` other than `LT` or `L`; the same (detector, module, layer) twice.
+- channel map: `fem_ip` not a dotted IPv4 address (no hexadecimal); `ch` outside 0-63; (detector, module,
+  layer) not in the definition or segment/side outside it; duplicate (`fem_ip`, `ch`), logical channel or
+  `name`. A row with `-` in both `fem_ip` and `ch` is an unassigned channel: it is skipped only with
+  `--e88-allow-unassigned` (the number of skipped rows is reported and shown as a warning); a `-` in only one
+  of the two columns is always an error.
+- parameter index: run ranges outside 0-999999; `required` other than `yes` or `no`; overlapping run ranges
+  of one kind (anywhere in the index, not only at the selected run); `detector_def` or `channel_map` rows that
+  are not `required yes`; a run that is not covered by the rows of a kind that has a `required yes` row. Kinds other than
+  `detector_def`, `channel_map` and `settings` (calibrations) are not used by the monitor.
+
+Warnings (the files load, the warning is printed and shown on the Summary page): (segment, side) of the
+definition missing from the channel map, unassigned rows, unknown setting keys, unknown index kinds.
 
 Settings used by the monitor: `tdc_lsb_ns`, `b2tt_data_type`, `sc_pair_window`, `mrpc_pair_window`,
 `t1_search`, `b2tt_search` and `window.<detector>` (range of the time relative to the SC mean time).
+`t1_window`, `e88sw_mrpc` and `e88sw_dead` are known keys that the monitor does not use.
 The channel named `T1` is the E88 trigger. Times are formed within one time frame, so coincidences that
 straddle two time frames are lost (T1 and B2TT records are matched across time frames).
+
+The files that were read are recorded with their SHA-256: printed at start-up (`E88 parameters file <kind>
+<path> sha256 <hex>`), written to the `--summary-json` output (`e88_parameters`) and stored as the TNamed
+`e88_parameters` in the histogram file (`--output`, or `--output-dir` of the device).
 
 ## Notes
 

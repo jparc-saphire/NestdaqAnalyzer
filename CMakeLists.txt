@@ -30,11 +30,12 @@ set(NDA_WARNINGS -Wall -Wextra)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 # ------------------------------------------------------------------------------
-# Core: data format (no ROOT, no FairMQ)
+# Core: data format and small utilities (no ROOT, no FairMQ)
 # ------------------------------------------------------------------------------
 add_library(nda_format STATIC
   core/format/Frames.cc
   core/format/FileReader.cc
+  core/util/Sha256.cc
 )
 target_include_directories(nda_format PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/core")
 # The nestdaq-user-impl headers use anonymous structs in unions; treat them as system headers.
@@ -147,5 +148,12 @@ if(NDA_BUILD_TESTS)
   add_executable(test_e88 test/test_e88.cc)
   target_link_libraries(test_e88 PRIVATE nda_e88)
   add_test(NAME e88 COMMAND test_e88)
-  set_target_properties(test_format test_modules test_e88 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test")
+  # Runs the conformance cases of the parameter repository given by the environment variable E88PARAM_DIR
+  # (kept outside this repository); skipped when it is not set.
+  add_executable(test_e88_conformance test/test_e88_conformance.cc)
+  target_link_libraries(test_e88_conformance PRIVATE nda_e88)
+  add_test(NAME e88_conformance COMMAND test_e88_conformance)
+  set_tests_properties(e88_conformance PROPERTIES SKIP_RETURN_CODE 77)
+  set_target_properties(test_format test_modules test_e88 test_e88_conformance PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test")
 endif()

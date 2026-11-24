@@ -4,6 +4,7 @@
 // monitor that is not connected to the DAQ chain. With --http the histograms are served by a
 // THttpServer (JSROOT) while the file is processed.
 #include <TFile.h>
+#include <TNamed.h>
 #include <THttpServer.h>
 #include <TROOT.h>
 #include <TSystem.h>
@@ -74,7 +75,11 @@ void Usage() {
                "  --detector-def FILE   detector definition (detector_def v1), overrides the index\n"
                "  --channel-map FILE    channel map (channel_map v1), overrides the index\n"
                "  --settings FILE       settings (settings v1), overrides the index; b2tt_data_type is\n"
-               "                        registered as a record type\n";
+               "                        registered as a record type\n"
+               "  --e88-allow-unassigned  skip channel-map rows with '-' in fem_ip and ch (cabling not fixed yet)\n"
+               "                        instead of failing; the number of skipped rows is reported\n"
+               "The parameter files used (path and SHA-256) are printed and written to the summary JSON\n"
+               "and, as the TNamed \"e88_parameters\", to the output ROOT file.\n";
 }
 
 bool ParseArgs(int argc, char** argv, Args& a) {
@@ -137,6 +142,8 @@ bool ParseArgs(int argc, char** argv, Args& a) {
       if (!value(a.e88.channelMap)) return false;
     } else if (k == "--settings") {
       if (!value(a.e88.settings)) return false;
+    } else if (k == "--e88-allow-unassigned") {
+      a.e88.allowUnassigned = true;
     } else if (k == "--expect-fem") {
       if (!value(v)) return false;
       std::stringstream ss(v);
@@ -183,7 +190,7 @@ std::string JsonEscape(const std::string& s) {
 
 void WriteSummary(const std::string& path, const nda::format::FileInfo& info, const nda::monitor::Engine& engine,
                   const nda::modules::DaqHealthModule& daq, const nda::modules::ChannelModule& ch,
-                  const std::vector<std::uint8_t>& recordTypes) {
+                  const std::vector<std::uint8_t>& recordTypes, const nda::e88::LoadReport* params) {
   using nda::modules::DaqHealthModule;
   std::ofstream os(path);
   const auto& t = daq.GetTotals();
@@ -192,6 +199,19 @@ void WriteSummary(const std::string& path, const nda::format::FileInfo& info, co
   os << "  \"record_types\": [";
   for (std::size_t i = 0; i < recordTypes.size(); ++i) os << (i ? ", " : "") << int(recordTypes[i]);
   os << "],\n";
+  if (params) {
+    os << "  \"e88_parameters\": {\"run_series\": \"" << JsonEscape(params->runSeries) << "\", \"files\": [";
+    for (std::size_t i = 0; i < params->files.size(); ++i) {
+      const auto& f = params->files[i];
+      os << (i ? ", " : "") << "\n    {\"kind\": \"" << f.kind << "\", \"path\": \"" << JsonEscape(f.path)
+         << "\", \"sha256\": \"" << f.sha256 << "\"}";
+    }
+    os << "],\n    \"unassigned_rows\": " << params->unassigned << ", \"warnings\": [";
+    for (std::size_t i = 0; i < params->warnings.size(); ++i) {
+      os << (i ? ", " : "") << "\"" << JsonEscape(params->warnings[i]) << "\"";
+    }
+    os << "]},\n";
+  }
   os << "  \"filesink_header\": " << (info.hasFileSinkHeader ? "true" : "false") << ",\n";
   os << "  \"filesink_trailer\": " << (info.hasFileSinkTrailer ? "true" : "false") << ",\n";
   os << "  \"received\": " << engine.Received() << ",\n  \"processed\": " << engine.Processed()
@@ -273,14 +293,15 @@ int main(int argc, char** argv) {
   }
   // The run number in the FileSink header selects the parameters, so open the input first.
   std::unique_ptr<nda::e88::E88Module> e88;
+  nda::e88::LoadReport params;
   if (args.e88.Given()) {
     nda::e88::E88Config config;
-    std::vector<std::string> used;
-    if (!nda::e88::LoadConfig(args.e88, reader.Info().runNumber, config, used, error)) {
+    if (!nda::e88::LoadConfig(args.e88, reader.Info().runNumber, config, params, error)) {
       std::cerr << "nda-replay: " << error << "\n";
       return 1;
     }
-    for (const auto& f : used) std::cout << "nda-replay: E88 parameters " << f << "\n";
+    std::istringstream lines(params.Text());
+    for (std::string line; std::getline(lines, line);) std::cout << "nda-replay: E88 parameters " << line << "\n";
     if (config.b2ttDataType >= 0) args.recordTypes.push_back(static_cast<std::uint8_t>(config.b2ttDataType));
     e88 = std::make_unique<nda::e88::E88Module>(std::move(config));
   }
@@ -295,6 +316,7 @@ int main(int argc, char** argv) {
   auto* channelsPtr = channels.get();
   engine.Add(std::move(daq));
   engine.Add(std::move(channels));
+  const bool e88Enabled = e88 != nullptr;
   if (e88) engine.Add(std::move(e88));
   engine.Book();
 
@@ -341,10 +363,15 @@ int main(int argc, char** argv) {
       status = 1;
     } else {
       registry.Write(&f);
+      if (e88Enabled) {
+        TNamed named("e88_parameters", params.Text().c_str());
+        f.WriteTObject(&named);
+      }
       f.Close();
     }
   }
-  if (!args.summaryJson.empty()) WriteSummary(args.summaryJson, reader.Info(), engine, *daqPtr, *channelsPtr, args.recordTypes);
+  if (!args.summaryJson.empty()) WriteSummary(args.summaryJson, reader.Info(), engine, *daqPtr, *channelsPtr, args.recordTypes,
+                 e88Enabled ? &params : nullptr);
 
   if (server && args.keepAlive) {
     std::cout << "nda-replay: serving histograms, stop with Ctrl-C\n";

@@ -6,6 +6,7 @@
 #include <fairmq/runDevice.h>
 
 #include <TFile.h>
+#include <TNamed.h>
 #include <THttpServer.h>
 #include <TROOT.h>
 #include <TSystem.h>
@@ -44,6 +45,7 @@ struct OptionKey {
   static constexpr const char* DetectorDef = "e88-detector-def";
   static constexpr const char* ChannelMap = "e88-channel-map";
   static constexpr const char* Settings = "e88-settings";
+  static constexpr const char* AllowUnassigned = "e88-allow-unassigned";
 };
 
 class OnlineMonitor : public fair::mq::Device {
@@ -86,14 +88,16 @@ class OnlineMonitor : public fair::mq::Device {
       param.detectorDef = fConfig->GetProperty<std::string>(OptionKey::DetectorDef);
       param.channelMap = fConfig->GetProperty<std::string>(OptionKey::ChannelMap);
       param.settings = fConfig->GetProperty<std::string>(OptionKey::Settings);
+      param.allowUnassigned = fConfig->GetProperty<bool>(OptionKey::AllowUnassigned);
       std::unique_ptr<nda::e88::E88Module> e88;
       if (param.Given()) {
         nda::e88::E88Config config;
-        std::vector<std::string> used;
         std::string error;
         const auto run = std::stoull(fConfig->GetProperty<std::string>(OptionKey::RunNumber));
-        if (!nda::e88::LoadConfig(param, run, config, used, error)) throw std::runtime_error(error);
-        for (const auto& f : used) LOG(info) << "E88 parameters " << f;
+        if (!nda::e88::LoadConfig(param, run, config, fParams, error)) throw std::runtime_error(error);
+        fHaveParams = true;
+        std::istringstream lines(fParams.Text());
+        for (std::string line; std::getline(lines, line);) LOG(info) << "E88 parameters " << line;
         if (config.b2ttDataType >= 0) engineOptions.recordTypes.push_back(static_cast<std::uint8_t>(config.b2ttDataType));
         e88 = std::make_unique<nda::e88::E88Module>(std::move(config));
       }
@@ -157,6 +161,10 @@ class OnlineMonitor : public fair::mq::Device {
         LOG(error) << "cannot write " << path;
       } else {
         fRegistry->Write(&f);
+        if (fHaveParams) {
+          TNamed named("e88_parameters", fParams.Text().c_str());
+          f.WriteTObject(&named);
+        }
         LOG(info) << "histograms written to " << path;
       }
     }
@@ -174,6 +182,8 @@ class OnlineMonitor : public fair::mq::Device {
   std::unique_ptr<nda::monitor::Engine> fEngine;
   std::vector<std::uint64_t> fBuffer;
   Clock::time_point fLastUpdate;
+  nda::e88::LoadReport fParams;  // parameter files used (path, SHA-256), written with the histograms
+  bool fHaveParams = false;
 };
 
 }  // namespace
@@ -196,7 +206,9 @@ void addCustomOptions(bpo::options_description& options) {
     (OptionKey::Param, bpo::value<std::string>()->default_value(""), "E88 parameter index (param_index v1)")
     (OptionKey::DetectorDef, bpo::value<std::string>()->default_value(""), "E88 detector definition, overrides the index")
     (OptionKey::ChannelMap, bpo::value<std::string>()->default_value(""), "E88 channel map, overrides the index")
-    (OptionKey::Settings, bpo::value<std::string>()->default_value(""), "E88 settings, overrides the index");
+    (OptionKey::Settings, bpo::value<std::string>()->default_value(""), "E88 settings, overrides the index")
+    (OptionKey::AllowUnassigned, bpo::value<bool>()->default_value(false)->implicit_value(true),
+     "Skip E88 channel-map rows with '-' in fem_ip and ch (cabling not fixed yet) instead of failing");
 }
 
 std::unique_ptr<fair::mq::Device> getDevice(fair::mq::ProgOptions& /*config*/) {

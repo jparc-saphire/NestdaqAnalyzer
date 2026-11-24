@@ -40,6 +40,11 @@ Options:
 | `--record-type` | (none) | comma-separated 6-bit types of multi-word records |
 | `--e88-param` | (none) | E88 parameter index (enables the E88 monitor) |
 | `--e88-detector-def`, `--e88-channel-map`, `--e88-settings` | (none) | E88 parameter files, override the index |
+| `--e88-allow-unassigned` | off | skip channel-map rows with `-` in `fem_ip` and `ch` instead of failing |
+
+The E88 parameter files are read once, when the device is initialized, for the run given by
+`--monitor-run-number`. Their paths and SHA-256 are written to the log and, as the TNamed `e88_parameters`,
+to the histogram file of each run.
 
 The NestDAQ topology is stored in redis as endpoints and links (see `script/topology-amq-stb.sh` in
 nestdaq-user-impl). A sketch for T1, **not yet tested**:

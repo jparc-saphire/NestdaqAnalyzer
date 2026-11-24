@@ -16,6 +16,7 @@
 #include "modules/DaqHealthModule.hh"
 #include "monitor/Engine.hh"
 #include "monitor/HistRegistry.hh"
+#include "util/Sha256.hh"
 
 using namespace nda;
 
@@ -123,6 +124,7 @@ void TestParams() {
 
   WriteFile("index.txt",
             "#! format param_index v1\n"
+            "#! run_series test\n"
             "detector_def 0 999 yes det.txt\n"
             "channel_map  0 100 yes map.txt\n"
             "channel_map  101 999 yes other-map.txt\n"
@@ -133,14 +135,47 @@ void TestParams() {
   CHECK(e88::ReadParamIndex(gDir + "/index.txt", 200, files, error));
   CHECK_EQ(files.channelMap, gDir + "/other-map.txt");
 
+  CHECK_EQ(files.runSeries, std::string("test"));
+  CHECK(!e88::ReadParamIndex(gDir + "/index.txt", 1000, files, error));  // required rows do not cover run 1000
+  CHECK(error.find("required") != std::string::npos);
+
   e88::ParamOptions options;
   options.index = gDir + "/index.txt";
   e88::E88Config config;
-  std::vector<std::string> used;
-  CHECK(e88::LoadConfig(options, 50, config, used, error));
+  e88::LoadReport report;
+  CHECK(e88::LoadConfig(options, 50, config, report, error));
   CHECK_EQ(config.b2ttDataType, 0x2b);
   CHECK_EQ(config.b2ttSearchNs[0], -100.0);
-  CHECK(!e88::LoadConfig(options, 200, config, used, error));  // other-map.txt does not exist
+  CHECK_EQ(report.runSeries, std::string("test"));
+  CHECK_EQ(report.files.size(), std::size_t{4});  // index, detector definition, channel map, settings
+  std::string sha;
+  CHECK(util::Sha256File(gDir + "/map.txt", sha, error));
+  CHECK(report.files.size() == 4 && report.files[2].kind == "channel_map" && report.files[2].sha256 == sha);
+  CHECK(report.Text().find("file channel_map " + gDir + "/map.txt sha256 " + sha) != std::string::npos);
+  CHECK(!e88::LoadConfig(options, 200, config, report, error));  // other-map.txt does not exist
+
+  // Unassigned rows ('-' in fem_ip and ch) are read only when allowed; '-' in one column is always an error.
+  const std::string unassigned = std::string(kChannels) + "-  -  AC 0 0 5 0 AC-5\n";
+  CHECK(!e88::ReadChannelMap(WriteFile("unassigned.txt", unassigned), def, map, error));
+  CHECK(e88::ReadChannelMap(gDir + "/unassigned.txt", def, map, error, true));
+  CHECK_EQ(map.unassigned, 1);
+  CHECK_EQ(map.channels.size(), std::size_t{8});
+  CHECK(!e88::ReadChannelMap(WriteFile("half.txt", std::string(kChannels) + "-  9  AC 0 0 5 0 AC-5\n"), def, map,
+                             error, true));
+
+  // Unknown setting keys are warnings.
+  CHECK(e88::ReadSettings(WriteFile("settings-unknown.txt", std::string(kSettings) + "tdc_lbs_ns 1\n"), settings, error));
+  CHECK_EQ(settings.warnings.size(), std::size_t{1});
+  CHECK(e88::Settings::KnownKey("window.SC") && !e88::Settings::KnownKey("window."));
+}
+
+void TestSha256() {
+  CHECK_EQ(util::Sha256Hex(""), std::string("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+  CHECK_EQ(util::Sha256Hex("abc"), std::string("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+  CHECK_EQ(util::Sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+           std::string("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"));
+  CHECK_EQ(util::Sha256Hex(std::string(1000000, 'a')),
+           std::string("cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"));
 }
 
 void TestRecordDecoding() {
@@ -171,9 +206,9 @@ void TestModule() {
   options.channelMap = gDir + "/map.txt";
   options.settings = gDir + "/settings.txt";
   e88::E88Config config;
-  std::vector<std::string> used;
+  e88::LoadReport report;
   std::string error;
-  CHECK(e88::LoadConfig(options, 1, config, used, error));
+  CHECK(e88::LoadConfig(options, 1, config, report, error));
 
   monitor::HistRegistry registry;
   monitor::Engine engine(registry, monitor::Engine::Options{1, {0x2b}});
@@ -241,6 +276,7 @@ int main() {
   if (!mkdtemp(dir)) return 1;
   gDir = dir;
   TestParams();
+  TestSha256();
   TestRecordDecoding();
   TestModule();
   std::system(("rm -rf " + gDir).c_str());
