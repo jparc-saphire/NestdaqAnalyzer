@@ -18,6 +18,8 @@ in a browser (THttpServer / JSROOT), together with warnings:
 | Channels/&lt;module&gt; | hit pattern, rate, ToT and time within the heartbeat frame for every channel; hot channels and channels that went silent |
 | E88/&lt;detector&gt; | (E88 only) hit pattern per segment and side, ToT, two-ended coincidences and their time difference, time relative to the nearest SC mean time |
 | E88/Trigger | (E88 only) T1 and B2TT record counts and rates, T1 - SC mean time, B2TT record time - T1, event id steps |
+| E88/SC pair TF | (E88 only) time frames with an SC up/down pair (the selection of the SC coincidence filter) and their fraction per second |
+| DAQ/B2TT | (E88 only) records of the B2TT receiver: record types, trigger type, event kind, flags, local sequence steps (lost records), spill id and resynchronisation count over time, trigger records per spill, interval between trigger records, frame of the record relative to the time frame, error records per second |
 
 The same monitor modules run on any input: a file written by the FileSink (`nda-replay`), or a FairMQ channel
 of the running DAQ (`nda-online-monitor`). See [docs/online-input.md](docs/online-input.md).

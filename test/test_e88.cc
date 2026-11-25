@@ -70,14 +70,14 @@ std::uint64_t Hit(int ch, double tNs, double totNs = 20) {
 }
 
 std::vector<std::uint64_t> TriggerRecord(std::uint32_t seq, std::uint16_t spill, std::uint32_t event,
-                                         std::uint32_t frame, std::uint16_t count) {
+                                         std::uint32_t frame, std::uint16_t count, std::uint8_t resync = 3) {
   const std::uint64_t h = (std::uint64_t{0x2b} << 58) | (std::uint64_t{2} << 54) | (std::uint64_t{1} << 50) |
                           (std::uint64_t{5} << 44) | (std::uint64_t{seq} << 12);
   const std::uint64_t w1 = (std::uint64_t{0xABCD} << 32) | (std::uint64_t{1} << 24) | (std::uint64_t{1} << 22) |
                            (std::uint64_t{1} << 21) | (std::uint64_t{1} << 20) | (std::uint64_t{1} << 19);
   const std::uint64_t w2 = (std::uint64_t{spill} << 48) | (std::uint64_t{event} << 16);
   const std::uint64_t w3 = (std::uint64_t{0x123456789} << 16) | count;
-  const std::uint64_t w4 = (std::uint64_t{frame & 0xFFFFFF} << 40) | (std::uint64_t{3} << 32) | seq;
+  const std::uint64_t w4 = (std::uint64_t{frame & 0xFFFFFF} << 40) | (std::uint64_t{resync} << 32) | seq;
   return {h, w1, w2, w3, w4};
 }
 
@@ -186,7 +186,16 @@ void TestRecordDecoding() {
   CHECK_EQ(r.recordType, int(e88::B2ttRecord::kTrigger));
   CHECK_EQ(r.localSequence, 7u);
   CHECK_EQ(r.triggerTag, 0xABCDu);
-  CHECK(r.hasId && r.hasTime && r.timeValid);
+  CHECK(r.hasId && r.hasTime && r.timeValid && r.timestampValid);
+  CHECK(!r.sourceInternal && !r.synchronized && !r.standalone);
+  CHECK_EQ(r.eventKind, 1);
+  {
+    auto f = w;
+    f[1] |= (std::uint64_t{1} << 23) | (std::uint64_t{1} << 18) | (std::uint64_t{1} << 17);
+    e88::B2ttRecord g;
+    CHECK(e88::DecodeB2ttRecord(f.data(), f.size(), g));
+    CHECK(g.sourceInternal && g.synchronized && g.standalone);
+  }
   CHECK_EQ(r.spillId, 3);
   CHECK_EQ(r.eventId, 1234u);
   CHECK_EQ(r.timestamp, std::uint64_t{0x123456789});
@@ -232,14 +241,23 @@ void TestModule() {
   auto tf1 = ndatest::BuildTimeFrame(f0 + 1, {Frame(kFem, ::SubTimeFrame::TDC64H, f0 + 1, {}),
                                                Frame(kReceiver, ::SubTimeFrame::TDC64L_V2, f0 + 1,
                                                      TriggerRecord(2, 5, 100, f0 + 1, 10))});
-  for (const auto* tf : {&tf0, &tf1}) {
+  // Third frame: the local sequence jumps from 2 to 5 (two records lost) and the resync count changes (3 -> 4).
+  auto tf2 = ndatest::BuildTimeFrame(f0 + 2, {Frame(kFem, ::SubTimeFrame::TDC64H, f0 + 2, {}),
+                                               Frame(kReceiver, ::SubTimeFrame::TDC64L_V2, f0 + 2,
+                                                     TriggerRecord(5, 5, 101, f0 + 2, 20, 4))});
+  for (const auto* tf : {&tf0, &tf1, &tf2}) {
     CHECK(engine.Process(reinterpret_cast<const std::uint8_t*>(tf->data()), ndatest::Bytes(*tf)));
   }
   engine.EndRun();
 
   const auto& c = e->GetCounts();
   CHECK_EQ(c.t1, std::uint64_t{1});
-  CHECK_EQ(c.b2ttTrigger, std::uint64_t{2});
+  CHECK_EQ(c.b2ttTrigger, std::uint64_t{3});
+  // SC pair only in the first time frame: the SC coincidence filter would keep 1 of 3.
+  CHECK_EQ(e->TimeFrames(), std::uint64_t{3});
+  CHECK_EQ(c.timeFramesWithScPair, std::uint64_t{1});
+  CHECK_EQ(c.b2ttMissing, std::uint64_t{2});
+  CHECK_EQ(c.b2ttResyncChanges, std::uint64_t{1});
   CHECK_EQ(c.b2ttUndecodable, std::uint64_t{0});
   CHECK_EQ(c.repeatedEventIds, std::uint64_t{1});
   CHECK_EQ(c.unmappedHits, std::uint64_t{1});
@@ -250,22 +268,28 @@ void TestModule() {
   const std::string json = e->JsonSummary();
   CHECK(json.find("\"t1_minus_sc_mean\": 150") != std::string::npos);
   CHECK(json.find("\"b2tt_minus_t1_mean\": 301") != std::string::npos);
+  CHECK(json.find("\"time_frames_with_sc_pair\": 1") != std::string::npos);
+  CHECK(json.find("\"b2tt_missing\": 2") != std::string::npos);
 
   // The record words are not taken as delimiters or hits.
   const int rx = daqPtr->Fems().Find(kReceiver);
   CHECK(rx >= 0);
-  CHECK_EQ(daqPtr->Counters(rx).frames, std::uint64_t{2});
-  CHECK_EQ(daqPtr->Counters(rx).records, std::uint64_t{2});
+  CHECK_EQ(daqPtr->Counters(rx).frames, std::uint64_t{3});
+  CHECK_EQ(daqPtr->Counters(rx).records, std::uint64_t{3});
   CHECK_EQ(daqPtr->Counters(rx).missingFrames, std::uint64_t{0});
   CHECK_EQ(daqPtr->Counters(rx).words[modules::DaqHealthModule::kKindLeading], std::uint64_t{0});
 
-  bool unmappedWarning = false, repeatWarning = false;
+  bool unmappedWarning = false, repeatWarning = false, missingWarning = false, resyncWarning = false;
   for (const auto& w : engine.Warnings()) {
+    missingWarning |= w.text.find("2 B2TT records missing from the local sequence") != std::string::npos;
+    resyncWarning |= w.text.find("resynchronisation count changed 1 times") != std::string::npos;
     unmappedWarning |= w.text.find("1 hits on channels not in the channel map: 192.0.2.16/60(1)") != std::string::npos;
     repeatWarning |= w.text.find("repeated 1 times") != std::string::npos;
   }
   CHECK(unmappedWarning);
   CHECK(repeatWarning);
+  CHECK(missingWarning);
+  CHECK(resyncWarning);
 }
 
 }  // namespace

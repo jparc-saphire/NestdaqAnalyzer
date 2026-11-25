@@ -30,12 +30,16 @@ struct B2ttRecord {
   std::uint32_t triggerTag = 0;
   int triggerType = 0;
   int eventKind = 0;
+  bool sourceInternal = false;
   bool hasId = false;
   bool hasTime = false;
+  bool timestampValid = false;  // the time stamp of the partner experiment is valid
   std::uint16_t spillId = 0;
   std::uint32_t eventId = 0;
   std::uint64_t timestamp = 0;  // 48 bits
   bool timeValid = false;       // v2: the E88 time below can be used
+  bool synchronized = false;    // v2
+  bool standalone = false;      // v2
   std::uint32_t frameNumber = 0;     // v2, 24 bits
   std::uint16_t heartbeatCount = 0;  // v2, 8 ns units within the frame
   std::uint8_t resyncCount = 0;      // v2
@@ -63,14 +67,18 @@ inline bool DecodeB2ttRecord(const std::uint64_t* w, std::size_t n, B2ttRecord& 
   r.triggerTag = static_cast<std::uint32_t>(w[1] >> 32);
   r.triggerType = static_cast<int>((w[1] >> 28) & 0xF);
   r.eventKind = static_cast<int>((w[1] >> 24) & 0xF);
+  r.sourceInternal = (w[1] >> 23) & 1;
   r.hasId = (w[1] >> 22) & 1;
   r.hasTime = (w[1] >> 21) & 1;
+  r.timestampValid = (w[1] >> 20) & 1;
   r.spillId = static_cast<std::uint16_t>(w[2] >> 48);
   r.eventId = static_cast<std::uint32_t>((w[2] >> 16) & 0xFFFFFFFF);
   r.timestamp = w[3] >> 16;
   r.streamSequence = static_cast<std::uint32_t>(w[4] & 0xFFFFFFFF);
   if (r.formatVersion == 2) {
     r.timeValid = (w[1] >> 19) & 1;
+    r.synchronized = (w[1] >> 18) & 1;
+    r.standalone = (w[1] >> 17) & 1;
     r.heartbeatCount = static_cast<std::uint16_t>(w[3] & 0xFFFF);
     r.frameNumber = static_cast<std::uint32_t>((w[4] >> 40) & 0xFFFFFF);
     r.resyncCount = static_cast<std::uint8_t>((w[4] >> 32) & 0xFF);

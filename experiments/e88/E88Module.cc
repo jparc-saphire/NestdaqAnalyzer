@@ -129,6 +129,43 @@ void E88Module::Book(monitor::HistRegistry& r) {
                           std::max(50, std::min(4000, static_cast<int>(std::lround(bs[1] - bs[0])))), bs[0], bs[1]);
   fEventIdStep = r.Book1D(t, "event_id_step", "Event id step between B2TT records (same spill);step;records", 13,
                           -2.5, 10.5);
+
+  // Selection of the SC coincidence filter: a time frame with an up/down pair in any SC segment.
+  const std::string f = "E88/SC pair TF";
+  fScPairTf = r.Book1D(f, "counts", "Time frames with an SC up/down pair;;time frames", 2, 0.5, 2.5);
+  fScPairTf->GetXaxis()->SetBinLabel(1, "time frames");
+  fScPairTf->GetXaxis()->SetBinLabel(2, "with SC pair");
+  fScPairTfFraction = r.Book1D(f, "fraction_vs_time", "Fraction of time frames with an SC up/down pair;run time [s];fraction",
+                               600, 0, 600);
+  fScPairTfFraction->SetCanExtend(TH1::kXaxis);
+
+  // Records of the B2TT receiver.
+  const std::string b = "DAQ/B2TT";
+  fB2ttTypes = r.Book1D(b, "record_types", "B2TT records by type;;records", 5, 0.5, 5.5);
+  const char* types[] = {"trigger", "status", "run marker", "error", "undecodable"};
+  for (int i = 0; i < 5; ++i) fB2ttTypes->GetXaxis()->SetBinLabel(i + 1, types[i]);
+  fB2ttTriggerType = r.Book1D(b, "trigger_type", "Trigger type (trigger and error records);trigger type;records", 16, -0.5, 15.5);
+  fB2ttEventKind = r.Book1D(b, "event_kind", "Event kind (trigger and error records);event kind;records", 16, -0.5, 15.5);
+  fB2ttFlags = r.Book1D(b, "flags", "Flags of trigger and error records;;records", 8, 0.5, 8.5);
+  const char* flags[] = {"records", "source internal", "has id", "has time", "time stamp valid", "E88 time valid (v2)",
+                         "synchronized (v2)", "standalone (v2)"};
+  for (int i = 0; i < 8; ++i) fB2ttFlags->GetXaxis()->SetBinLabel(i + 1, flags[i]);
+  fB2ttSequenceStep = r.Book1D(b, "sequence_step", "Local sequence step between records (1: none lost);step;records", 13,
+                               -2.5, 10.5);
+  fB2ttSpillVsTime = r.Book1D(b, "spill_id_vs_time", "Spill id of the last trigger record;run time [s];spill id", 600, 0, 600);
+  fB2ttSpillVsTime->SetCanExtend(TH1::kXaxis);
+  fB2ttPerSpill = r.Book1D(b, "triggers_per_spill", "Trigger records per spill (spills seen completely);records;spills",
+                           200, 0, 2000);
+  fB2ttResyncVsTime = r.Book1D(b, "resync_count_vs_time", "Resynchronisation count (v2);run time [s];resync count", 600, 0,
+                               600);
+  fB2ttResyncVsTime->SetCanExtend(TH1::kXaxis);
+  fB2ttErrorVsTime = r.Book1D(b, "errors_vs_time", "B2TT error records;run time [s];records / s", 600, 0, 600);
+  fB2ttErrorVsTime->SetCanExtend(TH1::kXaxis);
+  fB2ttInterval = r.Book1D(b, "trigger_interval", "Interval between trigger records (E88 time);log_{10}(#Deltat [ns]);records",
+                           200, 0, 10);
+  fB2ttFrameOffset = r.Book1D(b, "frame_offset",
+                              "Heartbeat frame of the record - frame of the time frame (v2);#Deltaframe;records", 21, -10.5,
+                              10.5);
 }
 
 void E88Module::BeginRun(const monitor::RunInfo&) {
@@ -145,6 +182,10 @@ void E88Module::BeginRun(const monitor::RunInfo&) {
   fHaveFirstFrame = false;
   fFrameSpan = 0;
   fTimeFrames = 0;
+  fTfPerSecond.clear();
+  fScPairTfPerSecond.clear();
+  fHaveSequence = fHaveResync = fHaveRecordTime = fSpillComplete = false;
+  fSpillTriggers = 0;
 }
 
 void E88Module::Process(const format::TimeFrameView& tf, const monitor::FrameContext& ctx) {
@@ -159,7 +200,11 @@ void E88Module::Process(const format::TimeFrameView& tf, const monitor::FrameCon
   }
   fTfStartNs = static_cast<double>(fFrameSpan) * kFrameNs;
   if (!ctx.contiguous) {
+    // Time frames were skipped (for example by a sampling input): sequences cannot be followed across the gap.
     fHaveEvent = false;
+    fHaveSequence = false;
+    fHaveRecordTime = false;
+    fSpillComplete = false;
     FinalizePending(1e300);
   }
   for (auto& s : fPlanes) {
@@ -209,6 +254,19 @@ void E88Module::Process(const format::TimeFrameView& tf, const monitor::FrameCon
     }
   }
   std::sort(fOrigins.begin(), fOrigins.end());
+
+  // Selection of the SC coincidence filter: any SC pair in this time frame.
+  const bool scPair = !fOrigins.empty();
+  const auto second = static_cast<std::size_t>(static_cast<double>(fFrameSpan) * format::kHeartbeatFrameSeconds);
+  if (fTfPerSecond.size() <= second) {
+    fTfPerSecond.resize(second + 1, 0);
+    fScPairTfPerSecond.resize(second + 1, 0);
+  }
+  ++fTfPerSecond[second];
+  if (scPair) {
+    ++fCounts.timeFramesWithScPair;
+    ++fScPairTfPerSecond[second];
+  }
 
   // Every hit relative to the nearest SC mean time.
   if (!fOrigins.empty()) {
@@ -316,10 +374,43 @@ void E88Module::HandleRecord(const std::uint64_t* words, std::size_t n, std::uin
   B2ttRecord r;
   if (!DecodeB2ttRecord(words, n, r)) {
     ++fCounts.b2ttUndecodable;
+    fB2ttTypes->Fill(5);
     return;
+  }
+  fB2ttTypes->Fill(r.recordType == B2ttRecord::kTrigger     ? 1
+                   : r.recordType == B2ttRecord::kStatus    ? 2
+                   : r.recordType == B2ttRecord::kRunMarker ? 3
+                                                            : 4);
+  // Every record carries the local sequence of the receiver: a step of more than one means lost records.
+  if (fHaveSequence) {
+    const auto step = static_cast<std::int32_t>(r.localSequence - fLastSequence);
+    fB2ttSequenceStep->Fill(step);
+    if (step > 1) fCounts.b2ttMissing += static_cast<std::uint64_t>(step - 1);
+  }
+  fHaveSequence = true;
+  fLastSequence = r.localSequence;
+  if (r.recordType == B2ttRecord::kRunMarker) ++fCounts.b2ttRunMarker;
+  if (r.recordType == B2ttRecord::kTrigger || r.recordType == B2ttRecord::kError) {
+    fB2ttTriggerType->Fill(r.triggerType);
+    fB2ttEventKind->Fill(r.eventKind);
+    fB2ttFlags->Fill(1);
+    if (r.sourceInternal) fB2ttFlags->Fill(2);
+    if (r.hasId) fB2ttFlags->Fill(3);
+    if (r.hasTime) fB2ttFlags->Fill(4);
+    if (r.timestampValid) fB2ttFlags->Fill(5);
+    if (r.formatVersion >= 2) {
+      if (r.timeValid) fB2ttFlags->Fill(6);
+      if (r.synchronized) fB2ttFlags->Fill(7);
+      if (r.standalone) fB2ttFlags->Fill(8);
+      if (fHaveResync && r.resyncCount != fLastResync) ++fCounts.b2ttResyncChanges;
+      fHaveResync = true;
+      fLastResync = r.resyncCount;
+      fB2ttResyncVsTime->SetBinContent(fB2ttResyncVsTime->FindBin(runSeconds), r.resyncCount);
+    }
   }
   if (r.recordType == B2ttRecord::kError) {
     ++fCounts.b2ttError;
+    fB2ttErrorVsTime->Fill(runSeconds);
     return;
   }
   if (r.recordType != B2ttRecord::kTrigger) {
@@ -328,8 +419,24 @@ void E88Module::HandleRecord(const std::uint64_t* words, std::size_t n, std::uin
   }
   ++fCounts.b2ttTrigger;
   fB2ttVsTime->Fill(runSeconds);
+  if (r.formatVersion >= 2 && r.timeValid) {
+    fB2ttFrameOffset->Fill(static_cast<double>(SignedFrameDiff(r.frameNumber, tfFrame)));
+    if (fHaveRecordTime) {
+      const double dt = static_cast<double>(SignedFrameDiff(r.frameNumber, fLastRecordFrame)) * kFrameNs +
+                        (static_cast<double>(r.heartbeatCount) - fLastRecordCount) * kHeartbeatCountNs;
+      if (dt > 0) fB2ttInterval->Fill(std::log10(dt));
+    }
+    fHaveRecordTime = true;
+    fLastRecordFrame = r.frameNumber;
+    fLastRecordCount = r.heartbeatCount;
+  }
   if (r.hasId) {
+    fB2ttSpillVsTime->SetBinContent(fB2ttSpillVsTime->FindBin(runSeconds), r.spillId);
     if (!fHaveEvent || r.spillId != fLastSpill) {
+      // A spill counts only when it was seen from its first record without skipped time frames.
+      if (fHaveEvent && fSpillComplete) fB2ttPerSpill->Fill(static_cast<double>(fSpillTriggers));
+      fSpillComplete = fHaveEvent;  // the first spill of a run (or after a gap) may have started earlier
+      fSpillTriggers = 0;
       ++fCounts.spills;
     } else {
       const auto step = static_cast<std::int32_t>(r.eventId - fLastEvent);
@@ -340,6 +447,7 @@ void E88Module::HandleRecord(const std::uint64_t* words, std::size_t n, std::uin
     fHaveEvent = true;
     fLastSpill = r.spillId;
     fLastEvent = r.eventId;
+    ++fSpillTriggers;
   }
   if (r.formatVersion >= 2 && r.timeValid) {
     fRecordTimes.push_back(static_cast<double>(SignedFrameDiff(r.frameNumber, tfFrame)) * kFrameNs +
@@ -404,6 +512,13 @@ void E88Module::Update() {
   fCounters->SetBinContent(kBinRepeated, static_cast<double>(fCounts.repeatedEventIds));
   fCounters->SetBinContent(kBinSkipped, static_cast<double>(fCounts.skippedEventIds));
   fCounters->SetBinContent(kBinUnmapped, static_cast<double>(fCounts.unmappedHits));
+  fScPairTf->SetBinContent(1, static_cast<double>(fTimeFrames));
+  fScPairTf->SetBinContent(2, static_cast<double>(fCounts.timeFramesWithScPair));
+  for (std::size_t s = 0; s < fTfPerSecond.size(); ++s) {
+    if (fTfPerSecond[s] == 0) continue;
+    const double fraction = static_cast<double>(fScPairTfPerSecond[s]) / static_cast<double>(fTfPerSecond[s]);
+    fScPairTfFraction->SetBinContent(fScPairTfFraction->FindBin(static_cast<double>(s) + 0.5), fraction);
+  }
 
   fDead.clear();
   for (std::size_t i = 0; i < fChannelHits.size(); ++i) {
@@ -447,6 +562,14 @@ void E88Module::Report(monitor::WarningList& out) const {
     out.push_back({Check::kTrigger, Severity::kWarning, Name(),
                    std::to_string(c.b2ttWithoutTime) + " B2TT trigger records without a valid E88 time"});
   }
+  if (c.b2ttMissing > 0) {
+    out.push_back({Check::kTrigger, Severity::kWarning, Name(),
+                   std::to_string(c.b2ttMissing) + " B2TT records missing from the local sequence"});
+  }
+  if (c.b2ttResyncChanges > 0) {
+    out.push_back({Check::kTrigger, Severity::kWarning, Name(),
+                   "B2TT resynchronisation count changed " + std::to_string(c.b2ttResyncChanges) + " times"});
+  }
   if (c.repeatedEventIds > 0 || c.skippedEventIds > 0) {
     out.push_back({Check::kTrigger, Severity::kWarning, Name(),
                    "B2TT event id repeated " + std::to_string(c.repeatedEventIds) + " times, skipped " +
@@ -483,6 +606,9 @@ std::string E88Module::JsonSummary() const {
      << ", \"records_with_t1\": " << c.recordsWithT1 << ", \"repeated_event_ids\": " << c.repeatedEventIds
      << ", \"skipped_event_ids\": " << c.skippedEventIds << ", \"spills\": " << c.spills
      << ", \"unmapped_hits\": " << c.unmappedHits << ", \"dead_channels\": " << fDead.size()
+     << ", \"time_frames\": " << fTimeFrames << ", \"time_frames_with_sc_pair\": " << c.timeFramesWithScPair
+     << ", \"b2tt_run_marker\": " << c.b2ttRunMarker << ", \"b2tt_missing\": " << c.b2ttMissing
+     << ", \"b2tt_resync_changes\": " << c.b2ttResyncChanges
      << ", \"t1_minus_sc_mean\": " << fT1MinusSc->GetMean() << ", \"t1_minus_sc_entries\": " << fT1MinusSc->GetEntries()
      << ", \"b2tt_minus_t1_mean\": " << fB2ttMinusT1->GetMean() << ", \"b2tt_minus_t1_rms\": " << fB2ttMinusT1->GetRMS()
      << ", \"pairs\": {";

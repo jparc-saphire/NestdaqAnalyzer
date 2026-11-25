@@ -1,5 +1,8 @@
 // E88 monitor: detector view through the channel map (SC, MRPC, AC), two-ended coincidences,
 // times relative to the SC mean time, the E88 trigger (T1) and the B2TT records of the receiver board.
+// The fraction of time frames with an SC up/down pair is the selection of the SC coincidence filter,
+// so it tells how much of the data that filter would keep. The B2TT records are also monitored on their
+// own (record types, flags, sequence, spills, resynchronisations) in the DAQ/B2TT folder.
 //
 // Times are computed within one time frame (frame number of each heartbeat frame relative to the
 // time frame id), so coincidences that straddle two time frames are not formed.
@@ -52,6 +55,10 @@ class E88Module : public monitor::Module {
     std::uint64_t skippedEventIds = 0;  // occurrences of a jump of more than one
     std::uint64_t spills = 0;
     std::uint64_t unmappedHits = 0;
+    std::uint64_t timeFramesWithScPair = 0;  // time frames with at least one SC up/down pair
+    std::uint64_t b2ttRunMarker = 0;
+    std::uint64_t b2ttMissing = 0;          // records missing from the local sequence (contiguous data only)
+    std::uint64_t b2ttResyncChanges = 0;    // changes of the resynchronisation count
   };
 
   explicit E88Module(E88Config config);
@@ -66,6 +73,7 @@ class E88Module : public monitor::Module {
 
   const Counts& GetCounts() const { return fCounts; }
   std::uint64_t Pairs(int plane) const { return fPlanes[plane].pairsTotal; }
+  std::uint64_t TimeFrames() const { return fTimeFrames; }
 
  private:
   struct Hit {
@@ -126,6 +134,33 @@ class E88Module : public monitor::Module {
   TH1D* fT1MinusSc = nullptr;
   TH1D* fB2ttMinusT1 = nullptr;
   TH1D* fEventIdStep = nullptr;
+
+  // Time frames with an SC up/down pair (selection of the SC coincidence filter).
+  TH1D* fScPairTf = nullptr;              // bins: time frames, with an SC pair
+  TH1D* fScPairTfFraction = nullptr;      // fraction per second of run time
+  std::vector<std::uint64_t> fTfPerSecond, fScPairTfPerSecond;
+
+  // B2TT receiver records (DAQ/B2TT).
+  TH1D* fB2ttTypes = nullptr;
+  TH1D* fB2ttTriggerType = nullptr;
+  TH1D* fB2ttEventKind = nullptr;
+  TH1D* fB2ttFlags = nullptr;
+  TH1D* fB2ttSequenceStep = nullptr;
+  TH1D* fB2ttSpillVsTime = nullptr;
+  TH1D* fB2ttPerSpill = nullptr;
+  TH1D* fB2ttResyncVsTime = nullptr;
+  TH1D* fB2ttErrorVsTime = nullptr;
+  TH1D* fB2ttInterval = nullptr;
+  TH1D* fB2ttFrameOffset = nullptr;
+  bool fHaveSequence = false;
+  std::uint32_t fLastSequence = 0;
+  bool fHaveResync = false;
+  std::uint8_t fLastResync = 0;
+  bool fHaveRecordTime = false;
+  std::uint32_t fLastRecordFrame = 0;
+  std::uint16_t fLastRecordCount = 0;
+  bool fSpillComplete = false;   // the current spill was seen from its start without skipped time frames
+  std::uint64_t fSpillTriggers = 0;
 };
 
 }  // namespace nda::e88
