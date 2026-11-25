@@ -25,6 +25,7 @@
 #include "modules/ChannelModule.hh"
 #include "modules/DaqHealthModule.hh"
 #include "modules/FemTable.hh"
+#include "monitor/ControlServer.hh"
 #include "monitor/Engine.hh"
 #include "monitor/HistRegistry.hh"
 
@@ -69,8 +70,8 @@ class OnlineMonitor : public fair::mq::Device {
 
     gROOT->SetBatch(true);
     if (!fServer && !fHttp.empty()) {
-      fServer = std::make_unique<THttpServer>(fHttp.c_str());
-      fServer->SetReadOnly(true);
+      // Reset button only: this device is part of the DAQ chain and is never restarted from the page.
+      fServer = std::make_unique<nda::monitor::ControlServer>(fHttp.c_str(), false);
       fServer->SetItemField("/", "_monitoring", std::to_string(static_cast<int>(fUpdateSeconds * 1000)).c_str());
       LOG(info) << "THttpServer started: " << fHttp;
     }
@@ -139,7 +140,14 @@ class OnlineMonitor : public fair::mq::Device {
         LOG(warn) << "malformed time frame: " << fEngine->LastError();
       }
     }
-    if (fServer) gSystem->ProcessEvents();
+    if (fServer) {
+      gSystem->ProcessEvents();
+      if (fServer->TakeReset()) {
+        fEngine->Reset();
+        fEngine->Update();
+        LOG(info) << "OnlineMonitor: histograms reset from the page";
+      }
+    }
     if (std::chrono::duration<double>(Clock::now() - fLastUpdate).count() >= fUpdateSeconds) {
       fEngine->Update();
       fLastUpdate = Clock::now();
@@ -177,7 +185,7 @@ class OnlineMonitor : public fair::mq::Device {
   std::string fOutputDir;
   double fUpdateSeconds = 2;
   std::uint64_t fRunNumber = 0;
-  std::unique_ptr<THttpServer> fServer;
+  std::unique_ptr<nda::monitor::ControlServer> fServer;
   std::unique_ptr<nda::monitor::HistRegistry> fRegistry;
   std::unique_ptr<nda::monitor::Engine> fEngine;
   std::vector<std::uint64_t> fBuffer;

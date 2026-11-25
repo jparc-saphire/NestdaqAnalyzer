@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,8 @@ class FileReader {
 
   // Set from another thread or a signal handler to interrupt waiting in follow mode.
   void SetStopFlag(const std::atomic<bool>* stop) { fStop = stop; }
+  // Called about every 100 ms while waiting for data in follow mode (for example to serve HTTP requests).
+  void SetWaitCallback(std::function<void()> callback) { fOnWait = std::move(callback); }
 
   const FileInfo& Info() const { return fInfo; }
   std::uint64_t Offset() const { return fOffset; }
@@ -58,6 +61,7 @@ class FileReader {
   bool ReadFileSinkBlock(bool header, std::string& error);
 
   Options fOptions;
+  std::function<void()> fOnWait;
   int fFd = -1;
   std::string fPath;
   std::uint64_t fOffset = 0;

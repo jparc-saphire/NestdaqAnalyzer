@@ -27,6 +27,7 @@
 #include "modules/ChannelModule.hh"
 #include "modules/DaqHealthModule.hh"
 #include "modules/FemTable.hh"
+#include "monitor/ControlServer.hh"
 #include "monitor/Engine.hh"
 #include "monitor/HistRegistry.hh"
 
@@ -35,6 +36,9 @@ namespace {
 std::atomic<bool> gStop{false};
 void OnSignal(int) { gStop = true; }
 
+// Exit status after the Restart button: whoever started the program starts it again.
+constexpr int kRestartStatus = 75;
+
 struct Args {
   std::string input;
   std::string output;
@@ -42,6 +46,7 @@ struct Args {
   std::string http;  // THttpServer engine, for example "http:8080" or "http:127.0.0.1:8080"
   bool follow = false;
   bool keepAlive = false;
+  bool allowRestart = false;
   int pollMs = 500;
   double idleTimeout = 0;
   double updateSeconds = 2;
@@ -59,7 +64,9 @@ void Usage() {
                "  --output FILE.root    write the histograms at the end\n"
                "  --summary-json FILE   write counts and warnings as JSON at the end\n"
                "  --http ENGINE         serve the histograms, e.g. http:8080 or http:127.0.0.1:8080\n"
-               "  --keep-alive          with --http, keep serving after the end of the input (stop with Ctrl-C)\n"
+               "  --keep-alive          with --http, keep serving after the end of the input (stop with Ctrl-C)\n"               "  --allow-restart       with --http, show a Restart button: the program then stops with exit status 75\n"
+               "                        so that the program that started it can start it again\n"
+
                "  --follow              wait for more data at the end of the file (stops at the FileSink trailer)\n"
                "  --poll-ms N           follow mode: check the file every N ms (default 500)\n"
                "  --idle-timeout S      follow mode: stop after S seconds without new data (default: never)\n"
@@ -107,6 +114,8 @@ bool ParseArgs(int argc, char** argv, Args& a) {
       if (!value(a.http)) return false;
     } else if (k == "--keep-alive") {
       a.keepAlive = true;
+    } else if (k == "--allow-restart") {
+      a.allowRestart = true;
     } else if (k == "--follow") {
       a.follow = true;
     } else if (k == "--quiet") {
@@ -273,10 +282,10 @@ int main(int argc, char** argv) {
   std::signal(SIGTERM, OnSignal);
   gROOT->SetBatch(true);
 
-  std::unique_ptr<THttpServer> server;
+  // The page has a Reset button (and Restart with --allow-restart); see monitor/ControlServer.hh.
+  std::unique_ptr<nda::monitor::ControlServer> server;
   if (!args.http.empty()) {
-    server = std::make_unique<THttpServer>(args.http.c_str());
-    server->SetReadOnly(true);
+    server = std::make_unique<nda::monitor::ControlServer>(args.http.c_str(), args.allowRestart);
     server->SetItemField("/", "_monitoring", std::to_string(static_cast<int>(args.updateSeconds * 1000)).c_str());
   }
 
@@ -286,6 +295,24 @@ int main(int argc, char** argv) {
   readerOptions.idleTimeoutSeconds = args.idleTimeout;
   nda::format::FileReader reader(readerOptions);
   reader.SetStopFlag(&gStop);
+  // Serves HTTP and acts on the buttons, also while waiting for data in follow mode.
+  nda::monitor::Engine* enginePtr = nullptr;
+  bool restart = false;
+  auto control = [&]() {
+    if (!server) return;
+    gSystem->ProcessEvents();
+    if (server->TakeReset() && enginePtr) {
+      enginePtr->Reset();
+      enginePtr->Update();
+      std::cout << "nda-replay: histograms reset from the page" << std::endl;
+    }
+    if (server->TakeRestart()) {
+      std::cout << "nda-replay: restart requested from the page" << std::endl;
+      restart = true;
+      gStop = true;
+    }
+  };
+  reader.SetWaitCallback(control);
   std::string error;
   if (!reader.Open(args.input, error)) {
     std::cerr << "nda-replay: " << error << "\n";
@@ -319,6 +346,7 @@ int main(int argc, char** argv) {
   const bool e88Enabled = e88 != nullptr;
   if (e88) engine.Add(std::move(e88));
   engine.Book();
+  enginePtr = &engine;
 
   engine.BeginRun(nda::monitor::RunInfo{reader.Info().runNumber});
   std::cout << "nda-replay: input " << args.input << ", run " << reader.Info().runNumber << "\n";
@@ -340,7 +368,7 @@ int main(int argc, char** argv) {
     if (!engine.Process(reinterpret_cast<const std::uint8_t*>(buffer.data()), size)) {
       std::cerr << "nda-replay: malformed time frame: " << engine.LastError() << "\n";
     }
-    if (server) gSystem->ProcessEvents();
+    control();
     if (std::chrono::duration<double>(Clock::now() - lastUpdate).count() >= args.updateSeconds) {
       engine.Update();
       lastUpdate = Clock::now();
@@ -373,13 +401,15 @@ int main(int argc, char** argv) {
   if (!args.summaryJson.empty()) WriteSummary(args.summaryJson, reader.Info(), engine, *daqPtr, *channelsPtr, args.recordTypes,
                  e88Enabled ? &params : nullptr);
 
+  if (restart) return kRestartStatus;
   if (server && args.keepAlive) {
     std::cout << "nda-replay: serving histograms, stop with Ctrl-C\n";
     gStop = false;
     while (!gStop) {
-      gSystem->ProcessEvents();
+      control();
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+    if (restart) return kRestartStatus;
   }
   return status;
 }

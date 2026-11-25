@@ -44,6 +44,7 @@ void Engine::Book() {
 }
 
 void Engine::BeginRun(const RunInfo& run) {
+  fRun = run;
   fRegistry.ResetAll();
   fReceived = fProcessed = fMalformed = 0;
   fGap = false;

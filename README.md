@@ -93,6 +93,12 @@ build/bin/nda-replay --input run000124.dat --follow --http http:<port> --expect-
 
 `nda-replay --help` lists all options (sampling, refresh interval, JSON summary, ...).
 
+The page refreshes the displayed histograms every `--update` seconds (Monitoring is on when the page opens). Two buttons
+at the top act on the program: **Reset** clears all histograms and counters, which fill again from the next time frame,
+and **Restart** (only with `--allow-restart`) makes `nda-replay` stop with exit status 75 so that the program that
+started it can start it again. `nda-online-monitor` has only Reset. The server stays read-only: it executes no other
+commands or object methods. The page answers while `--follow` waits for new data.
+
 ### Multi-word records
 
 Some boards put records of several 64-bit words into their stream: a header word with its own 6-bit type and a

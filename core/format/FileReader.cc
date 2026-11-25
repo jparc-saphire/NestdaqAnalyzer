@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -166,7 +167,14 @@ FileReader::Wait FileReader::WaitFor(std::uint64_t bytes, std::string& error) {
                std::chrono::duration<double>(Clock::now() - lastGrowth).count() > fOptions.idleTimeoutSeconds) {
       return Wait::kEnd;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(fOptions.pollMilliseconds));
+    // Sleep in slices so that the wait callback runs regularly.
+    for (int slept = 0; slept < fOptions.pollMilliseconds;) {
+      if (fOnWait) fOnWait();
+      if (fStop && fStop->load()) return Wait::kStopped;
+      const int slice = std::min(100, fOptions.pollMilliseconds - slept);
+      std::this_thread::sleep_for(std::chrono::milliseconds(slice));
+      slept += slice;
+    }
   }
 }
 

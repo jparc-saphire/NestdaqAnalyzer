@@ -35,6 +35,8 @@ class Engine {
   void Add(std::unique_ptr<Module> module);
   void Book();
   void BeginRun(const RunInfo& run);
+  // Clears the histograms, counters and warnings as at the start of the current run (Reset button).
+  void Reset() { BeginRun(fRun); }
   // Returns false if the frame was malformed (it is then counted and skipped).
   bool Process(const std::uint8_t* data, std::size_t size);
   // Marks that time frames were lost before the next one (for example dropped by the transport).
@@ -55,6 +57,7 @@ class Engine {
 
  private:
   HistRegistry& fRegistry;
+  RunInfo fRun{};
   Options fOptions;
   format::WordStream fWords;
   std::vector<std::unique_ptr<Module>> fModules;
