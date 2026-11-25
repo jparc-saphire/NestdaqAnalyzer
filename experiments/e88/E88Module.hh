@@ -74,6 +74,7 @@ class E88Module : public monitor::Module {
   const Counts& GetCounts() const { return fCounts; }
   std::uint64_t Pairs(int plane) const { return fPlanes[plane].pairsTotal; }
   std::uint64_t TimeFrames() const { return fTimeFrames; }
+  const TH1D* SideHits(int plane, int side) const { return fPlanes[plane].sideHits[side]; }
 
  private:
   struct Hit {
@@ -86,6 +87,7 @@ class E88Module : public monitor::Module {
     std::vector<std::vector<Hit>> hits;  // per (segment * nSides + side), cleared every time frame
     std::uint64_t pairsTotal = 0;
     TH2D* hitPattern = nullptr;
+    std::vector<TH1D*> sideHits;  // leading edges per segment, one per side, before any coincidence
     TH2D* tot = nullptr;
     TH2D* dtOrigin = nullptr;
     TH1D* pairs = nullptr;

@@ -86,6 +86,19 @@ void E88Module::Book(monitor::HistRegistry& r) {
     const int nch = p.nSegments * p.nSides;
     s.hitPattern = r.Book2D(folder, "hit_pattern", L + " leading edges;segment;side", p.nSegments, 0, p.nSegments,
                             p.nSides, 0, p.nSides);
+    // One histogram per side (up and down for two-ended planes), binned by segment and labelled with the
+    // channel names: only channels of the channel map are shown, as they are before any coincidence.
+    s.sideHits.clear();
+    for (int side = 0; side < p.nSides; ++side) {
+      const std::string name = p.nSides == 1 ? "hits" : side == 0 ? "hits_up" : "hits_down";
+      const std::string what = p.nSides == 1 ? "" : side == 0 ? " side 0 (up)" : " side 1 (down)";
+      TH1D* h = r.Book1D(folder, name, L + what + " leading edges, no coincidence;;hits", p.nSegments, 0, p.nSegments);
+      for (int seg = 0; seg < p.nSegments; ++seg) h->GetXaxis()->SetBinLabel(seg + 1, std::to_string(seg).c_str());
+      for (const auto& c : fConfig.channels.channels) {
+        if (c.plane == static_cast<int>(i) && c.side == side) h->GetXaxis()->SetBinLabel(c.segment + 1, c.name.c_str());
+      }
+      s.sideHits.push_back(h);
+    }
     s.tot = r.Book2D(folder, "tot", L + " ToT;segment #times n_{side} + side;ToT [ns]", nch, 0, nch, 250, 0, 500);
     const double lo = fConfig.settings.Number("window." + p.detector, 0, -200);
     const double hi = fConfig.settings.Number("window." + p.detector, 1, 200);
@@ -351,6 +364,7 @@ void E88Module::CollectFrame(const format::TimeFrameView& tf, const monitor::Fra
           const double tot = hit.tot * unit;
           s.hits[mc->segment * s.sideCount + mc->side].push_back(Hit{t, tot});
           s.hitPattern->Fill(mc->segment, mc->side);
+          s.sideHits[mc->side]->Fill(mc->segment);
           if (hit.tot > 0) s.tot->Fill(mc->segment * s.sideCount + mc->side, tot);
           if (s.grid) s.grid->Fill(mc->segment % 3, mc->segment / 3);
           if (index == fT1) {

@@ -16,6 +16,8 @@
 #include "modules/DaqHealthModule.hh"
 #include "monitor/Engine.hh"
 #include "monitor/HistRegistry.hh"
+
+#include <TH1D.h>
 #include "util/Sha256.hh"
 
 using namespace nda;
@@ -265,6 +267,25 @@ void TestModule() {
   CHECK_EQ(c.recordsWithT1, std::uint64_t{1});
   CHECK_EQ(e->Pairs(0), std::uint64_t{1});  // SC
   CHECK_EQ(e->Pairs(1), std::uint64_t{0});  // MRPC: only one end
+  // Hits per side before any coincidence, labelled with the channel names; unmapped channels are not shown.
+  const TH1D* scUp = e->SideHits(0, 0);
+  const TH1D* scDown = e->SideHits(0, 1);
+  const TH1D* mrpcUp = e->SideHits(1, 0);
+  const TH1D* mrpcDown = e->SideHits(1, 1);
+  const TH1D* ac = e->SideHits(2, 0);
+  CHECK(std::string(scUp->GetName()) == "hits_up");
+  CHECK(std::string(scDown->GetName()) == "hits_down");
+  CHECK(std::string(ac->GetName()) == "hits");
+  CHECK_EQ(scUp->GetBinContent(1), 1.0);
+  CHECK_EQ(scDown->GetBinContent(1), 1.0);
+  CHECK_EQ(scUp->GetBinContent(2), 0.0);
+  CHECK_EQ(mrpcUp->GetBinContent(1), 1.0);   // channel 4: one end only, no pair
+  CHECK_EQ(mrpcDown->GetBinContent(1), 0.0);
+  CHECK(std::string(scUp->GetXaxis()->GetBinLabel(2)) == "SC-1-U");
+  CHECK(std::string(scDown->GetXaxis()->GetBinLabel(1)) == "SC-0-D");
+  CHECK(std::string(ac->GetXaxis()->GetBinLabel(5)) == "AC-4");
+  CHECK(std::string(ac->GetXaxis()->GetBinLabel(1)) == "0");  // segment without a channel
+  CHECK_EQ(ac->GetEntries(), 0.0);
   const std::string json = e->JsonSummary();
   CHECK(json.find("\"t1_minus_sc_mean\": 150") != std::string::npos);
   CHECK(json.find("\"b2tt_minus_t1_mean\": 301") != std::string::npos);
