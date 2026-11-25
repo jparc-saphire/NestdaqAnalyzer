@@ -47,7 +47,23 @@ std::string List(const std::vector<std::string>& items, std::size_t max = 12) {
   return os.str();
 }
 
+// Name of a side in histogram names and titles. The detector definition gives side 0 = U (up) and side 1 = D (down)
+// for every two-ended plane.
+std::string SideName(int nSides, int side) { return nSides == 1 ? "" : side == 0 ? "up" : "down"; }
+
 }  // namespace
+
+std::string E88Module::DisplayFolder(const Plane& p) {
+  // Names of the E88 detector definition (module and layer as in the cable assignment table).
+  if (p.detector == "SC" && p.layer == 0) return "SC" + std::to_string(p.module + 1);  // SC1 upper, SC2 lower
+  if (p.detector == "MRPC" && p.module == 0 && p.layer == 0) return "MRPC";
+  if (p.detector == "AC" && p.module == 0 && p.layer == 0) return "AC/SUM";
+  if (p.detector == "AC" && p.module == 0 && p.layer == 1) return "AC/SUM_QTC";
+  if (p.detector == "AC" && p.module > 0 && p.layer == 0) return "AC/AC" + std::to_string(p.module) + "_CH";
+  if (p.detector == "REFC" && p.module == 0) return "REFC/layer" + std::to_string(p.layer);
+  if (p.detector == "TRIG" && p.module == 0 && p.layer == 0) return "TRIG";
+  return p.Label();
+}
 
 void E88Config::ApplySettings() {
   tdcLsbNs = settings.Number("tdc_lsb_ns", 0, tdcLsbNs);
@@ -81,34 +97,47 @@ void E88Module::Book(monitor::HistRegistry& r) {
   for (std::size_t i = 0; i < planes.size(); ++i) {
     const auto& p = planes[i];
     auto& s = fPlanes[i];
-    const std::string folder = "E88/" + p.Label();
-    const std::string L = p.Label();
-    const int nch = p.nSegments * p.nSides;
-    s.hitPattern = r.Book2D(folder, "hit_pattern", L + " leading edges;segment;side", p.nSegments, 0, p.nSegments,
-                            p.nSides, 0, p.nSides);
-    // One histogram per side (up and down for two-ended planes), binned by segment and labelled with the
-    // channel names: only channels of the channel map are shown, as they are before any coincidence.
-    s.sideHits.clear();
-    for (int side = 0; side < p.nSides; ++side) {
-      const std::string name = p.nSides == 1 ? "hits" : side == 0 ? "hits_up" : "hits_down";
-      const std::string what = p.nSides == 1 ? "" : side == 0 ? " side 0 (up)" : " side 1 (down)";
-      TH1D* h = r.Book1D(folder, name, L + what + " leading edges, no coincidence;;hits", p.nSegments, 0, p.nSegments);
-      for (int seg = 0; seg < p.nSegments; ++seg) h->GetXaxis()->SetBinLabel(seg + 1, std::to_string(seg).c_str());
-      for (const auto& c : fConfig.channels.channels) {
-        if (c.plane == static_cast<int>(i) && c.side == side) h->GetXaxis()->SetBinLabel(c.segment + 1, c.name.c_str());
-      }
-      s.sideHits.push_back(h);
+    const std::string name = DisplayFolder(p);
+    const std::string folder = "E88/" + name;
+    const std::string L = name;
+    const bool twoSided = p.nSides == 2;
+    s.hitPattern = r.Book2D(folder, "hit_pattern", L + " leading edges;segment;", p.nSegments, 0, p.nSegments, p.nSides,
+                            0, p.nSides);
+    if (twoSided) {
+      // Down at the bottom, up at the top, as the counters stand.
+      s.hitPattern->GetYaxis()->SetBinLabel(1, "down");
+      s.hitPattern->GetYaxis()->SetBinLabel(2, "up");
     }
-    s.tot = r.Book2D(folder, "tot", L + " ToT;segment #times n_{side} + side;ToT [ns]", nch, 0, nch, 250, 0, 500);
     const double lo = fConfig.settings.Number("window." + p.detector, 0, -200);
     const double hi = fConfig.settings.Number("window." + p.detector, 1, 200);
     const int bins = std::max(50, std::min(2000, static_cast<int>(std::lround(hi - lo))));
-    s.dtOrigin = r.Book2D(folder, "dt_sc_meantime",
-                          L + " time - nearest SC mean time;segment #times n_{side} + side;#Deltat [ns]", nch, 0, nch,
-                          bins, lo, hi);
+    // One histogram per side (up and down for two-ended planes), binned by segment and labelled with the channel
+    // names: only channels of the channel map are shown, hits as they are before any coincidence.
+    s.sideHits.clear();
+    s.tot.clear();
+    s.dtOrigin.clear();
+    for (int side = 0; side < p.nSides; ++side) {
+      const std::string sideName = SideName(p.nSides, side);
+      const std::string suffix = twoSided ? "_" + sideName : "";
+      const std::string what = twoSided ? " " + sideName : "";
+      TH1D* h = r.Book1D(folder, "hits" + suffix, L + what + " leading edges, no coincidence;;hits", p.nSegments, 0,
+                         p.nSegments);
+      TH2D* t = r.Book2D(folder, "tot" + suffix, L + what + " ToT;;ToT [ns]", p.nSegments, 0, p.nSegments, 250, 0, 500);
+      TH2D* d = r.Book2D(folder, "dt_sc_meantime" + suffix, L + what + " time - nearest SC mean time;;#Deltat [ns]",
+                         p.nSegments, 0, p.nSegments, bins, lo, hi);
+      for (TH1* x : {static_cast<TH1*>(h), static_cast<TH1*>(t), static_cast<TH1*>(d)}) {
+        for (int seg = 0; seg < p.nSegments; ++seg) x->GetXaxis()->SetBinLabel(seg + 1, std::to_string(seg).c_str());
+        for (const auto& c : fConfig.channels.channels) {
+          if (c.plane == static_cast<int>(i) && c.side == side) x->GetXaxis()->SetBinLabel(c.segment + 1, c.name.c_str());
+        }
+      }
+      s.sideHits.push_back(h);
+      s.tot.push_back(t);
+      s.dtOrigin.push_back(d);
+    }
     if (s.pairWindow > 0) {
       s.pairs = r.Book1D(folder, "pairs", L + " two-ended coincidences;segment;pairs", p.nSegments, 0, p.nSegments);
-      s.pairDt = r.Book2D(folder, "pair_dt", L + " t(side 0) - t(side 1);segment;#Deltat [ns]", p.nSegments, 0,
+      s.pairDt = r.Book2D(folder, "pair_dt", L + " t(up) - t(down);segment;#Deltat [ns]", p.nSegments, 0,
                           p.nSegments, 200, -s.pairWindow, s.pairWindow);
     }
     if (p.detector == "AC" && p.nSegments == 9 && p.nSides == 1) {
@@ -291,7 +320,7 @@ void E88Module::Process(const format::TimeFrameView& tf, const monitor::FrameCon
           double dt = 1e300;
           if (it != fOrigins.end()) dt = h.t - *it;
           if (it != fOrigins.begin() && std::fabs(h.t - *(it - 1)) < std::fabs(dt)) dt = h.t - *(it - 1);
-          s.dtOrigin->Fill(static_cast<double>(k), dt);
+          s.dtOrigin[k % s.sideCount]->Fill(static_cast<double>(k / s.sideCount), dt);
         }
       }
     }
@@ -363,9 +392,9 @@ void E88Module::CollectFrame(const format::TimeFrameView& tf, const monitor::Fra
           const double t = frameStart + hit.tdc * unit;
           const double tot = hit.tot * unit;
           s.hits[mc->segment * s.sideCount + mc->side].push_back(Hit{t, tot});
-          s.hitPattern->Fill(mc->segment, mc->side);
+          s.hitPattern->Fill(mc->segment, s.sideCount == 2 ? 1 - mc->side : 0);  // down (side 1) in the lower row
           s.sideHits[mc->side]->Fill(mc->segment);
-          if (hit.tot > 0) s.tot->Fill(mc->segment * s.sideCount + mc->side, tot);
+          if (hit.tot > 0) s.tot[mc->side]->Fill(mc->segment, tot);
           if (s.grid) s.grid->Fill(mc->segment % 3, mc->segment / 3);
           if (index == fT1) {
             fT1Times.push_back(t);

@@ -286,6 +286,24 @@ void TestModule() {
   CHECK(std::string(ac->GetXaxis()->GetBinLabel(5)) == "AC-4");
   CHECK(std::string(ac->GetXaxis()->GetBinLabel(1)) == "0");  // segment without a channel
   CHECK_EQ(ac->GetEntries(), 0.0);
+  CHECK(std::string(mrpcUp->GetXaxis()->GetBinLabel(1)) == "MRPC-0-0");
+
+  // Folders named as in the detector definition: SC module m -> SC<m+1>, AC by module and layer.
+  auto plane = [](const char* det, int module, int layer) {
+    e88::Plane p;
+    p.detector = det;
+    p.module = module;
+    p.layer = layer;
+    return p;
+  };
+  CHECK(e88::E88Module::DisplayFolder(plane("SC", 0, 0)) == "SC1");
+  CHECK(e88::E88Module::DisplayFolder(plane("SC", 1, 0)) == "SC2");
+  CHECK(e88::E88Module::DisplayFolder(plane("MRPC", 0, 0)) == "MRPC");
+  CHECK(e88::E88Module::DisplayFolder(plane("AC", 0, 0)) == "AC/SUM");
+  CHECK(e88::E88Module::DisplayFolder(plane("AC", 0, 1)) == "AC/SUM_QTC");
+  CHECK(e88::E88Module::DisplayFolder(plane("AC", 2, 0)) == "AC/AC2_CH");
+  CHECK(e88::E88Module::DisplayFolder(plane("REFC", 0, 1)) == "REFC/layer1");
+  CHECK(e88::E88Module::DisplayFolder(plane("SC", 0, 1)) == "SC_m0_l1");  // not in the definition: generic label
   const std::string json = e->JsonSummary();
   CHECK(json.find("\"t1_minus_sc_mean\": 150") != std::string::npos);
   CHECK(json.find("\"b2tt_minus_t1_mean\": 301") != std::string::npos);

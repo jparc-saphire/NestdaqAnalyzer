@@ -75,6 +75,8 @@ class E88Module : public monitor::Module {
   std::uint64_t Pairs(int plane) const { return fPlanes[plane].pairsTotal; }
   std::uint64_t TimeFrames() const { return fTimeFrames; }
   const TH1D* SideHits(int plane, int side) const { return fPlanes[plane].sideHits[side]; }
+  // Histogram folder of a plane below E88/ (for example SC1, AC/SUM_QTC); see DisplayFolder in E88Module.cc.
+  static std::string DisplayFolder(const Plane& plane);
 
  private:
   struct Hit {
@@ -86,10 +88,12 @@ class E88Module : public monitor::Module {
     double pairWindow = 0;  // 0: no two-ended pairing
     std::vector<std::vector<Hit>> hits;  // per (segment * nSides + side), cleared every time frame
     std::uint64_t pairsTotal = 0;
-    TH2D* hitPattern = nullptr;
-    std::vector<TH1D*> sideHits;  // leading edges per segment, one per side, before any coincidence
-    TH2D* tot = nullptr;
-    TH2D* dtOrigin = nullptr;
+    TH2D* hitPattern = nullptr;  // segment x (down, up) for two-ended planes
+    // Per side (index = side number of the channel map: 0 up, 1 down), binned by segment and labelled with
+    // the channel names.
+    std::vector<TH1D*> sideHits;  // leading edges before any coincidence
+    std::vector<TH2D*> tot;
+    std::vector<TH2D*> dtOrigin;
     TH1D* pairs = nullptr;
     TH2D* pairDt = nullptr;
     TH2D* grid = nullptr;  // AC 3x3 view
