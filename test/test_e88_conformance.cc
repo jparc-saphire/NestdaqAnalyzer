@@ -9,8 +9,11 @@
 //   unassigned  read only when unassigned rows are allowed; otherwise rejected
 //   reject      rejected
 // Channel maps and settings are read with conformance/detectors.txt as the detector definition.
-// In addition, every <run_series>/index.txt listed in E88PARAM_INDEXES ("dir:run:mode", mode = clean or
-// unassigned; default "2026nov:1:unassigned dummy:900000:clean") is loaded for the given run.
+// In addition, every <run_series>/index.txt listed in E88PARAM_INDEXES ("dir:run:mode"; default
+// "2026nov:1:complete dummy:900000:clean") is loaded for the given run. Modes:
+//   clean       loads by default, no unassigned row, no warning
+//   complete    loads by default, no unassigned row; warnings (channels of the definition not cabled) allowed
+//   unassigned  rejected by default, loads with unassigned rows allowed (cabling not fixed)
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -117,8 +120,8 @@ void LoadIndex(const std::string& dir, const std::string& spec) {
   const bool strict = e88::LoadConfig(options, runNumber, config, report, error);
   bool pass;
   std::ostringstream detail;
-  if (mode == "clean") {
-    pass = strict && report.unassigned == 0 && report.warnings.empty();
+  if (mode == "clean" || mode == "complete") {
+    pass = strict && report.unassigned == 0 && (mode == "complete" || report.warnings.empty());
     detail << (strict ? "loaded" : "rejected (" + error + ")") << ", " << config.channels.channels.size()
            << " channels, " << report.warnings.size() << " warning(s)";
   } else {
@@ -177,7 +180,7 @@ int main() {
     return 1;
   }
   const char* indexes = std::getenv("E88PARAM_INDEXES");
-  std::stringstream specs(indexes ? indexes : "2026nov:1:unassigned dummy:900000:clean");
+  std::stringstream specs(indexes ? indexes : "2026nov:1:complete dummy:900000:clean");
   for (std::string spec; specs >> spec;) LoadIndex(dir, spec);
   std::cout << n << " cases, " << gFailures << " failure(s)\n";
   return gFailures ? 1 : 0;

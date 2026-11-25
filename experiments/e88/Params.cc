@@ -63,9 +63,11 @@ std::string Where(const std::string& path, const Line& line) { return path + ":"
 constexpr long kMaxRun = 999999;
 constexpr long kMaxChannel = 63;  // high-resolution TDC: 64 channels per board
 
-// Decimal digits only (no sign, no hexadecimal) within [lo, hi].
+// Integer column of the parameter files: decimal digits only (no sign, no hexadecimal), no leading zero ("0" itself
+// is allowed), within [lo, hi]. "010" and "0x3" are errors so that no reader takes them as octal or hexadecimal.
 bool ToDecimal(const std::string& s, long lo, long hi, long& v) {
   if (s.empty() || s.size() > 9 || s.find_first_not_of("0123456789") != std::string::npos) return false;
+  if (s.size() > 1 && s[0] == '0') return false;
   v = std::strtol(s.c_str(), nullptr, 10);
   return v >= lo && v <= hi;
 }
@@ -87,7 +89,7 @@ bool ParseDottedIPv4(const std::string& text, std::uint32_t& value) {
     const auto dot = text.find('.', start);
     const std::string part = text.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
     long byte = 0;
-    if (part.size() > 3 || (part.size() > 1 && part[0] == '0') || !ToDecimal(part, 0, 255, byte)) return false;
+    if (part.size() > 3 || !ToDecimal(part, 0, 255, byte)) return false;
     value = (value << 8) | static_cast<std::uint32_t>(byte);
     ++parts;
     if (dot == std::string::npos) break;
@@ -139,7 +141,7 @@ bool ReadDetectorDef(const std::string& path, DetectorDef& out, std::string& err
   std::vector<Line> lines;
   std::map<std::string, const Line*> directives;
   if (!ReadLines(path, lines, error) || !ReadDirectives(path, lines, "detector_def", directives, error)) return false;
-  static const std::set<std::string> kDetectors = {"SC", "MRPC", "AC", "TRIG"};
+  static const std::set<std::string> kDetectors = {"SC", "MRPC", "AC", "TRIG", "REFC"};
   for (const auto& l : lines) {
     if (l.directive) continue;
     if (l.tokens.size() < 6) {
@@ -147,7 +149,7 @@ bool ReadDetectorDef(const std::string& path, DetectorDef& out, std::string& err
       return false;
     }
     if (!kDetectors.count(l.tokens[0])) {
-      error = Where(path, l) + "unknown detector " + l.tokens[0] + " (known: SC MRPC AC TRIG)";
+      error = Where(path, l) + "unknown detector " + l.tokens[0] + " (known: SC MRPC AC TRIG REFC)";
       return false;
     }
     Plane p;

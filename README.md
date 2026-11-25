@@ -60,8 +60,9 @@ ctest --test-dir build        # unit tests
 ```
 
 The test `e88_conformance` runs the conformance cases of the E88 parameter repository (its
-`conformance/cases.txt`) through the parameter reader, and loads the indexes `2026nov/index.txt` (unassigned
-rows allowed) and `dummy/index.txt` (must load without warnings). The parameter repository is not part of
+`conformance/cases.txt`) through the parameter reader, and loads the indexes `2026nov/index.txt` (must load
+without unassigned rows; warnings for channels not cabled are allowed) and `dummy/index.txt` (must load without
+warnings). The parameter repository is not part of
 this repository: give its location with `E88PARAM_DIR`; without it the test is reported as skipped.
 
 ```bash
@@ -121,7 +122,10 @@ conformance cases (see Build). Summary of the formats (whitespace separated text
 
 Rules that make a file fail to load:
 
-- detector definition: `detector` other than `SC`, `MRPC`, `AC`, `TRIG`; `module`, `layer` outside 0-255;
+- every file: an integer column (run numbers, `module`, `layer`, `segment`, `side`, `n_segment`, `n_side`, `ch`
+  and the parts of `fem_ip`) that is not decimal or has a leading zero (`010`, `0x3`); a directive given twice.
+  Values in the settings may be hexadecimal (`0x2b`).
+- detector definition: `detector` other than `SC`, `MRPC`, `AC`, `TRIG`, `REFC`; `module`, `layer` outside 0-255;
   `n_side` other than 1 or 2; `edges` other than `LT` or `L`; the same (detector, module, layer) twice.
 - channel map: `fem_ip` not a dotted IPv4 address (no hexadecimal); `ch` outside 0-63; (detector, module,
   layer) not in the definition or segment/side outside it; duplicate (`fem_ip`, `ch`), logical channel or
