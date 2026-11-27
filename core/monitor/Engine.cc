@@ -35,6 +35,7 @@ void Engine::Book() {
   fCounters->GetXaxis()->SetBinLabel(kBinMalformed, "malformed");
   fStatus = fRegistry.Book1D("Summary", "status", "Status (0 OK, 1 warning, 2 error);;severity", kNumChecks, 0.5,
                              kNumChecks + 0.5);
+  fRegistry.MarkInstant(fStatus);
   fStatus->SetMaximum(2.5);
   fStatus->SetMinimum(0);
   for (int i = 0; i < kNumChecks; ++i) fStatus->GetXaxis()->SetBinLabel(i + 1, CheckName(static_cast<Check>(i)));

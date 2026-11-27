@@ -31,6 +31,10 @@ class HistRegistry {
   void Publish(const std::string& folder, TObject* object);
   void Unpublish(TObject* object);
 
+  // Marks a histogram that shows a current value (a rate, a status) instead of accumulated counts. The page's
+  // browser-side reset never changes it.
+  void MarkInstant(TH1* hist);
+
   void ResetAll();
   void Write(TDirectory* dir) const;
   THttpServer* Server() const { return fServer; }

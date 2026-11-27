@@ -50,6 +50,7 @@ find_package(ROOT REQUIRED COMPONENTS Core RIO Hist RHTTP)
 add_library(nda_monitor STATIC
   core/monitor/HistRegistry.cc
   core/monitor/ControlServer.cc
+  core/monitor/BrowserResetScript.cc
   core/monitor/Engine.cc
   core/modules/FemTable.cc
   core/modules/DaqHealthModule.cc

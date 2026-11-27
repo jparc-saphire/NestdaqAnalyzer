@@ -55,6 +55,7 @@ ChannelModule::FemData& ChannelModule::Get(std::uint32_t femId, std::uint32_t fe
   const double frameUs = format::kHeartbeatFrameSeconds * 1e6;
   d->hitPattern = fRegistry->Book1D(folder, "hit_pattern", (label + " leading edges;channel;hits").c_str(), n, 0, n);
   d->rate = fRegistry->Book1D(folder, "rate", (label + " leading edge rate;channel;rate [Hz]").c_str(), n, 0, n);
+  fRegistry->MarkInstant(d->rate);
   d->tot = fRegistry->Book2D(folder, "tot", (label + " ToT;channel;ToT [ns]").c_str(), n, 0, n, fOptions.totBins, 0,
                              totMax);
   d->time = fRegistry->Book2D(folder, "time_in_frame",

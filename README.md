@@ -94,11 +94,23 @@ build/bin/nda-replay --input run000124.dat --follow --http http:<port> --expect-
 
 `nda-replay --help` lists all options (sampling, refresh interval, JSON summary, ...).
 
-The page refreshes the displayed histograms every `--update` seconds (Monitoring is on when the page opens). Two buttons
-at the top act on the program: **Reset** clears all histograms and counters, which fill again from the next time frame,
-and **Restart** (only with `--allow-restart`) makes `nda-replay` stop with exit status 75 so that the program that
-started it can start it again. `nda-online-monitor` has only Reset. The server stays read-only: it executes no other
-commands or object methods. The page answers while `--follow` waits for new data.
+The page refreshes the displayed histograms every `--update` seconds (Monitoring is on when the page opens). Four buttons
+at the top:
+
+| Button | Effect |
+|---|---|
+| **Reset** (all browsers) | clears all histograms and counters of the program; they fill again from the next time frame. Everybody who looks at the page sees it |
+| **Reset** (this browser only) | the page remembers the contents of the histograms when the button is pressed and shows the histograms counted from then on. The program and other browsers are not affected |
+| **Undo browser reset** | shows the histograms as they are again |
+| **Restart** | only with `--allow-restart`: `nda-replay` stops with exit status 75 so that the program that started it can start it again. Everybody sees it |
+
+`nda-online-monitor` has no Restart button. The reset of one browser works on histograms that accumulate counts (hit
+patterns, ToT, coincidences, counters). Histograms that show a current value (rates, the status) and the histograms against
+run time are marked in the page (item field `_nda_instant`) and never changed. A browser reset ends by itself when the
+program is reset or started again (every start and every Reset gives the histograms a new identifier, the object
+`Control/generation`), and the page says so. It is kept only in the open tab: reloading the page forgets it. The reset of one
+browser is done by a small script that the program serves to the page (`nda/browser-reset.mjs`, JSROOT 7); the server stays
+read-only and executes no other commands or object methods. A histogram that shows a current value instead of counts must be marked with `HistRegistry::MarkInstant` when it is booked. The page answers while `--follow` waits for new data.
 
 ### Developing next to a running DAQ
 

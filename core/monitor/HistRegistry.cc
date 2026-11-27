@@ -73,6 +73,16 @@ void HistRegistry::Unpublish(TObject* object) {
   if (fServer) fServer->Unregister(object);
 }
 
+void HistRegistry::MarkInstant(TH1* hist) {
+  if (!fServer) return;
+  for (const auto& e : fEntries) {
+    if (e.hist.get() == hist) {
+      fServer->SetItemField(("/" + e.folder + "/" + hist->GetName()).c_str(), "_nda_instant", "true");
+      return;
+    }
+  }
+}
+
 void HistRegistry::ResetAll() {
   for (auto& e : fEntries) e.hist->Reset();
 }

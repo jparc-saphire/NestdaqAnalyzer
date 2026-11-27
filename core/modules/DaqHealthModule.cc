@@ -60,6 +60,7 @@ void DaqHealthModule::Book(monitor::HistRegistry& r) {
   const char* tfLabels[] = {"complete", "incomplete", "timeout", "depth limit", "#STF != numSource", "STF id differ"};
   for (int i = 0; i < 6; ++i) fTfFlags->GetXaxis()->SetBinLabel(i + 1, tfLabels[i]);
   fTfVsTime = r.Book1D("DAQ", "tf_vs_time", "Processed time frames;run time [s];time frames / s", 600, 0, 600);
+  r.MarkInstant(fTfVsTime);
   fTfVsTime->SetCanExtend(TH1::kXaxis);
   fWords = r.Book2D("DAQ", "fem_words", "Words per module and type;module;", n, 0, n, kNumKinds, 0, kNumKinds);
   for (int k = 0; k < kNumKinds; ++k) fWords->GetYaxis()->SetBinLabel(k + 1, kKindLabels[k]);
@@ -71,6 +72,7 @@ void DaqHealthModule::Book(monitor::HistRegistry& r) {
   for (int i = 0; i < kNumFrameBins; ++i) fFrames->GetYaxis()->SetBinLabel(i + 1, frameLabels[i]);
   fDataRate = r.Book1D("DAQ", "fem_data_rate", "Data words (excluding delimiters) per second;module;words / s", n, 0,
                        n);
+  r.MarkInstant(fDataRate);
   for (int i = 0; i < fFems.Size(); ++i) AddFem(i, fFems.IdAt(i));
 }
 

@@ -160,8 +160,10 @@ void E88Module::Book(monitor::HistRegistry& r) {
                                          "unmapped hits"};
   for (int i = 0; i < kNumCounterBins; ++i) fCounters->GetXaxis()->SetBinLabel(i + 1, labels[i]);
   fT1VsTime = r.Book1D(t, "t1_vs_time", "T1;run time [s];T1 / s", 600, 0, 600);
+  r.MarkInstant(fT1VsTime);
   fT1VsTime->SetCanExtend(TH1::kXaxis);
   fB2ttVsTime = r.Book1D(t, "b2tt_vs_time", "B2TT trigger records;run time [s];records / s", 600, 0, 600);
+  r.MarkInstant(fB2ttVsTime);
   fB2ttVsTime->SetCanExtend(TH1::kXaxis);
   const double* ts = fConfig.t1SearchNs;
   fT1MinusSc = r.Book1D(t, "t1_minus_sc_meantime", "T1 - SC mean time;#Deltat [ns];candidates",
@@ -179,6 +181,7 @@ void E88Module::Book(monitor::HistRegistry& r) {
   fScPairTf->GetXaxis()->SetBinLabel(2, "with SC pair");
   fScPairTfFraction = r.Book1D(f, "fraction_vs_time", "Fraction of time frames with an SC up/down pair;run time [s];fraction",
                                600, 0, 600);
+  r.MarkInstant(fScPairTfFraction);
   fScPairTfFraction->SetCanExtend(TH1::kXaxis);
 
   // Records of the B2TT receiver.
@@ -195,13 +198,16 @@ void E88Module::Book(monitor::HistRegistry& r) {
   fB2ttSequenceStep = r.Book1D(b, "sequence_step", "Local sequence step between records (1: none lost);step;records", 13,
                                -2.5, 10.5);
   fB2ttSpillVsTime = r.Book1D(b, "spill_id_vs_time", "Spill id of the last trigger record;run time [s];spill id", 600, 0, 600);
+  r.MarkInstant(fB2ttSpillVsTime);
   fB2ttSpillVsTime->SetCanExtend(TH1::kXaxis);
   fB2ttPerSpill = r.Book1D(b, "triggers_per_spill", "Trigger records per spill (spills seen completely);records;spills",
                            200, 0, 2000);
   fB2ttResyncVsTime = r.Book1D(b, "resync_count_vs_time", "Resynchronisation count (v2);run time [s];resync count", 600, 0,
                                600);
+  r.MarkInstant(fB2ttResyncVsTime);
   fB2ttResyncVsTime->SetCanExtend(TH1::kXaxis);
   fB2ttErrorVsTime = r.Book1D(b, "errors_vs_time", "B2TT error records;run time [s];records / s", 600, 0, 600);
+  r.MarkInstant(fB2ttErrorVsTime);
   fB2ttErrorVsTime->SetCanExtend(TH1::kXaxis);
   fB2ttInterval = r.Book1D(b, "trigger_interval", "Interval between trigger records (E88 time);log_{10}(#Deltat [ns]);records",
                            200, 0, 10);
