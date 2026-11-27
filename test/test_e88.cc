@@ -301,6 +301,18 @@ void TestModule() {
   CHECK(e88::E88Module::DisplayFolder(plane("MRPC", 0, 0)) == "MRPC");
   CHECK(e88::E88Module::DisplayFolder(plane("AC", 0, 0)) == "AC/SUM");
   CHECK(e88::E88Module::DisplayFolder(plane("AC", 0, 1)) == "AC/SUM_QTC");
+  // Range of the time relative to the SC mean time: a window of the folder (window.AC_SUM_QTC) wins over the detector's.
+  {
+    e88::Settings w;
+    CHECK(e88::E88Module::TimeWindow(w, plane("AC", 0, 1)) == std::make_pair(-200.0, 200.0));
+    w.Set("window.AC", {"-100", "100"});
+    CHECK(e88::E88Module::TimeWindow(w, plane("AC", 0, 1)) == std::make_pair(-100.0, 100.0));
+    w.Set("window.AC_SUM_QTC", {"-100", "300"});
+    CHECK(e88::E88Module::TimeWindow(w, plane("AC", 0, 1)) == std::make_pair(-100.0, 300.0));
+    CHECK(e88::E88Module::TimeWindow(w, plane("AC", 0, 0)) == std::make_pair(-100.0, 100.0));  // AC/SUM keeps window.AC
+    CHECK(e88::E88Module::TimeWindow(w, plane("AC", 2, 0)) == std::make_pair(-100.0, 100.0));
+    CHECK(e88::Settings::KnownKey("window.AC_SUM_QTC"));
+  }
   CHECK(e88::E88Module::DisplayFolder(plane("AC", 2, 0)) == "AC/AC2_CH");
   CHECK(e88::E88Module::DisplayFolder(plane("REFC", 0, 1)) == "REFC/layer1");
   CHECK(e88::E88Module::DisplayFolder(plane("SC", 0, 1)) == "SC_m0_l1");  // not in the definition: generic label

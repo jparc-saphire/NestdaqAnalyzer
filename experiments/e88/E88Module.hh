@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "e88/Params.hh"
@@ -77,6 +78,10 @@ class E88Module : public monitor::Module {
   const TH1D* SideHits(int plane, int side) const { return fPlanes[plane].sideHits[side]; }
   // Histogram folder of a plane below E88/ (for example SC1, AC/SUM_QTC); see DisplayFolder in E88Module.cc.
   static std::string DisplayFolder(const Plane& plane);
+  // Range [ns] of the time relative to the nearest SC mean time that the plane's histograms show (dt_sc_meantime).
+  // Setting window.<folder> with the display folder written with '_' for '/' (for example window.AC_SUM_QTC), else
+  // window.<detector>, else [-200, 200]. A hit outside the range is only counted in the overflow bins.
+  static std::pair<double, double> TimeWindow(const Settings& settings, const Plane& plane);
 
  private:
   struct Hit {

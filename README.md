@@ -188,7 +188,9 @@ Warnings (the files load, the warning is printed and shown on the Summary page):
 definition missing from the channel map, unassigned rows, unknown setting keys, unknown index kinds.
 
 Settings used by the monitor: `tdc_lsb_ns`, `b2tt_data_type`, `sc_pair_window`, `mrpc_pair_window`,
-`t1_search`, `b2tt_search` and `window.<detector>` (range of the time relative to the SC mean time).
+`t1_search`, `b2tt_search` and `window.<detector>` (range of the time relative to the SC mean time). A plane can have a range
+of its own: `window.<folder>` with the folder below `E88/` written with `_` for `/` (for example `window.AC_SUM_QTC` for
+`AC/SUM_QTC`) is used instead of `window.<detector>`. A hit outside the range is counted only in the overflow bins.
 `t1_window`, `e88sw_mrpc` and `e88sw_dead` are known keys that the monitor does not use.
 The channel named `T1` is the E88 trigger. Times are formed within one time frame, so coincidences that
 straddle two time frames are lost (T1 and B2TT records are matched across time frames).

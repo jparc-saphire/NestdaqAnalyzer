@@ -65,6 +65,13 @@ std::string E88Module::DisplayFolder(const Plane& p) {
   return p.Label();
 }
 
+std::pair<double, double> E88Module::TimeWindow(const Settings& settings, const Plane& plane) {
+  std::string folder = DisplayFolder(plane);
+  std::replace(folder.begin(), folder.end(), '/', '_');
+  const std::string key = settings.Has("window." + folder) ? "window." + folder : "window." + plane.detector;
+  return {settings.Number(key, 0, -200), settings.Number(key, 1, 200)};
+}
+
 void E88Config::ApplySettings() {
   tdcLsbNs = settings.Number("tdc_lsb_ns", 0, tdcLsbNs);
   b2ttDataType = static_cast<int>(settings.Integer("b2tt_data_type", 0, b2ttDataType));
@@ -108,8 +115,7 @@ void E88Module::Book(monitor::HistRegistry& r) {
       s.hitPattern->GetYaxis()->SetBinLabel(1, "down");
       s.hitPattern->GetYaxis()->SetBinLabel(2, "up");
     }
-    const double lo = fConfig.settings.Number("window." + p.detector, 0, -200);
-    const double hi = fConfig.settings.Number("window." + p.detector, 1, 200);
+    const auto [lo, hi] = TimeWindow(fConfig.settings, p);
     const int bins = std::max(50, std::min(2000, static_cast<int>(std::lround(hi - lo))));
     // One histogram per side (up and down for two-ended planes), binned by segment and labelled with the channel
     // names: only channels of the channel map are shown, hits as they are before any coincidence.
