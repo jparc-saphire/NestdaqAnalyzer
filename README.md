@@ -37,6 +37,7 @@ NestdaqAnalyzer/
 ├── experiments/
 │   └── e88/           E88 monitor: parameter files, B2TT records, E88Module
 ├── apps/              nda-replay (reads files, no FairMQ)
+├── tools/             analyzer-dev.py: run your build next to a running DAQ, compare two analyses
 ├── devices/           nda-online-monitor (FairMQ device, built only when FairMQ is found)
 ├── test/              unit tests
 ├── docs/              online-input.md
@@ -98,6 +99,32 @@ at the top act on the program: **Reset** clears all histograms and counters, whi
 and **Restart** (only with `--allow-restart`) makes `nda-replay` stop with exit status 75 so that the program that
 started it can start it again. `nda-online-monitor` has only Reset. The server stays read-only: it executes no other
 commands or object methods. The page answers while `--follow` waits for new data.
+
+### Developing next to a running DAQ
+
+`nda-replay` only reads the file, so several people can analyze the file of a running DAQ at the same time, each with a
+build of their own branch, without touching the DAQ or the analyzer that the shift members watch. `tools/analyzer-dev.py`
+does this without a browser and compares two analyses of the same run:
+
+```bash
+# one run (a run that is still being written is followed to its end); the results go to a new directory
+tools/analyzer-dev.py run --data-dir <data-dir> --run <N> --out <new-dir> [--param <param-dir>/index.txt]
+# the newest run file, then every newer one, until Ctrl-C; also serve the histograms on a loopback port of your own
+tools/analyzer-dev.py run --data-dir <data-dir> --follow-new --out <new-dir> --http 127.0.0.1:<port>
+# the same run analyzed by two builds: exit status 0 when the results are the same
+tools/analyzer-dev.py compare <dir-A>/run<NNNNNN>.root <dir-B>/run<NNNNNN>.root
+```
+
+- `run` uses `build/bin/nda-replay` of this clone (`--exe` takes another build) and writes `runNNNNNN.root`,
+  `runNNNNNN.json` (the summary), `analyzer-runNNNNNN.log` per run and `report.json` with the commands and the build: the
+  executable's SHA-256 and, from the CMake build directory, the source commit, the branch and whether the clone has
+  uncommitted changes. More `nda-replay` options go after `--` (for example `-- --max-frames 1000`).
+- The analyzer runs with a lower CPU priority (`--nice`, default 10). `--out` must be a new directory outside the data
+  directory, and `--http` only takes a loopback address that is free.
+- `compare` takes two `.root` files (every histogram bin by bin; needs PyROOT) or two summary `.json` files (every number;
+  file paths and run times are ignored). `--tolerance` sets a relative tolerance.
+- A change of the analyzer is checked by analyzing a reference run with the analyzer in use and with your build and
+  comparing the two: the histograms you did not mean to change must be the same.
 
 ### Multi-word records
 

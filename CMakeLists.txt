@@ -155,6 +155,12 @@ if(NDA_BUILD_TESTS)
   target_link_libraries(test_e88_conformance PRIVATE nda_e88)
   add_test(NAME e88_conformance COMMAND test_e88_conformance)
   set_tests_properties(e88_conformance PROPERTIES SKIP_RETURN_CODE 77)
+  # The developer tool tools/analyzer-dev.py (tested with a stand-in for nda-replay).
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    add_test(NAME analyzer_dev COMMAND ${Python3_EXECUTABLE} -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tools"
+             -p "test_analyzer_dev.py")
+  endif()
   set_target_properties(test_format test_modules test_e88 test_e88_conformance PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test")
 endif()
