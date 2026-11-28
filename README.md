@@ -5,6 +5,13 @@ Online analysis tools for the NestDAQ data acquisition system.
 > **Status: under development.** The generic part (data format, DAQ health, per-channel monitor, file replay)
 > and the E88 monitor build and are tested with generated data. The FairMQ device also builds and receives synthetic time frames over an isolated IPC channel. Live DAQ inputs remain untested.
 
+## Documentation
+
+| For | Read |
+|---|---|
+| Writing or changing analysis code: add a histogram or a module, run and test it locally, share the change (beginner friendly) | [docs/developing.md](docs/developing.md) · [日本語](docs/developing.ja.md) |
+| The two input paths (file and live data stream) | [docs/online-input.md](docs/online-input.md) |
+
 ## What it does
 
 NestDAQ assembles the data of the front-end modules (FEMs, for example HR-TDC and LR-TDC boards) into
